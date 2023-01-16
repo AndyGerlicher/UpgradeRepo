@@ -73,18 +73,18 @@ namespace UpgradeRepo.LegacyCpv
         public bool RemoveSdkEnable(MSBuildFile msBuildFile)
         {
             // TODO: Not ideal here, way too specific
-            msBuildFile.RemoveTopLevelXml("  <Sdk Name=\"Microsoft.Build.CentralPackageVersions\" />");
+            var sdkTextMatch = Regex.Match(msBuildFile.Content, @"\s*<Sdk Name=""Microsoft.Build.CentralPackageVersions""\s*(Version=""[\d|\.|\w|-]*"")?\s*/>", RegexOptions.IgnoreCase);
 
-            var newContents = msBuildFile.Content;
-
-            // Be much more permissive in detecting if we missed it.
-            if (Regex.IsMatch(msBuildFile.Content, @"Name=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase) ||
-                Regex.IsMatch(msBuildFile.Content, @"SDK=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase))
+            if (sdkTextMatch.Success)
             {
-                throw new Exception("Couldn't remove legacy SDK declaration");
+                msBuildFile.RemoveTopLevelXml(sdkTextMatch.Value);
+
+                // Be much more permissive in detecting if we missed it.
+                return !Regex.IsMatch(msBuildFile.Content, @"Name=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase) &&
+                       !Regex.IsMatch(msBuildFile.Content, @"SDK=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase);
             }
 
-            return true;
+            return false;
         }
 
         public bool FixPackageReferenceUpdate(MSBuildFile packagesPropsFile)
