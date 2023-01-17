@@ -13,11 +13,10 @@ namespace UpgradeRepo.Cpv
         public string Name { get; }
         public NuGetVersion Version { get; }
 
-        public Package(string name, NuGetVersion version)
+        public Package(string name, NuGetVersion? version)
         {
-            if (string.IsNullOrEmpty(name)) Debugger.Launch();
-            Name = name;
-            Version = version;
+            Name = name ?? throw new ArgumentNullException(nameof(name));
+            Version = version ?? throw new ArgumentNullException(nameof(version));
         }
 
         public override bool Equals(object? obj)

@@ -84,7 +84,7 @@ namespace Gardener.Core.MSBuild
         /// No conditions are evaluated, so this will return true even if the condition could never be met.
         /// </remarks>
         public bool IsPropertySet(string propertyName)
-            => SelectNodes($"Project/PropertyGroup/{propertyName}").Count > 0;
+            => SelectNodes($"Project/PropertyGroup/{propertyName}")!.Count > 0;
 
         /// <summary>
         /// Takes a dictionary of properties, generates their XML representation and inserts
@@ -266,7 +266,7 @@ namespace Gardener.Core.MSBuild
         {
             var packagesMapping = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var doc = XDocument.Load(new StringReader(contents));
-            var packages = doc.Root.Elements()
+            var packages = doc.Root?.Elements()
                 .Where(e => string.Equals(e.Name.LocalName, "ItemGroup", StringComparison.OrdinalIgnoreCase))
                 .Elements()
                 .Where(e =>
@@ -275,34 +275,31 @@ namespace Gardener.Core.MSBuild
                         || string.Equals(e.Name.LocalName, "PackageVersion", StringComparison.OrdinalIgnoreCase))
                     && e.HasAttributes
                     && (e.Attribute("Include") != null || e.Attribute("Update") != null));
-            foreach (var package in packages)
+
+            if (packages != null)
             {
-                var id = package.Attribute("Include")?.Value;
-                if (id is null)
+                foreach (var package in packages)
                 {
-                    id = package.Attribute("Update")?.Value;
-                }
+                    var id = package.Attribute("Include")?.Value ?? package.Attribute("Update")?.Value;
 
-                if (id is null)
-                {
-                    throw new InvalidOperationException($"Unable to determine package id of (Global)PackageReference: {package}");
-                }
+                    if (id is null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Unable to determine package id of (Global)PackageReference: {package}");
+                    }
 
-                var version = package.Attribute("Version");
-                if (version is null)
-                {
-                    version = package.Attribute("VersionOverride");
-                }
+                    var version = package.Attribute("Version") ?? package.Attribute("VersionOverride");
 
-                if (packagesMapping.ContainsKey(id) && version is not null)
-                {
-                    packagesMapping[id].Add(version.Value);
-                }
-                else
-                {
-                    packagesMapping.Add(
-                        id,
-                        (version is null) ? new HashSet<string> { } : new HashSet<string> { version.Value });
+                    if (packagesMapping.ContainsKey(id) && version is not null)
+                    {
+                        packagesMapping[id].Add(version.Value);
+                    }
+                    else
+                    {
+                        packagesMapping.Add(
+                            id,
+                            (version is null) ? new HashSet<string> { } : new HashSet<string> { version.Value });
+                    }
                 }
             }
 

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Gardener.Core;
 using Gardener.Core.Json;
 using Gardener.Core.MSBuild;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Shouldly;
 using UpgradeRepo.LegacyCpv;
@@ -46,7 +47,48 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
+            var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
+            var result = p.RemoveSdkEnable(file);
+
+            mockFS.VerifyAll();
+            result.ShouldBeTrue();
+            file.Content.ShouldBe(expectedXml);
+        }
+
+        [Fact]
+        public void LegacyCpvRemoveSdkElementWithVersionTest()
+        {
+            string mockFilePath = @"c:\temp\doesnotexist.csproj";
+
+            var xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
+<Project>
+  <Sdk Name=""Microsoft.Build.CentralPackageVersions"" Version=""1.0-pre""/>
+  <!-- Comment -->
+  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
+    <IsTestProject>true</IsTestProject>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
+    <QInstrumentForCoverage>false</QInstrumentForCoverage>
+  </PropertyGroup>
+</Project>";
+
+            var expectedXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
+<Project>
+  <!-- Comment -->
+  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
+    <IsTestProject>true</IsTestProject>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
+    <QInstrumentForCoverage>false</QInstrumentForCoverage>
+  </PropertyGroup>
+</Project>";
+
+            var mockFS = new Mock<IFileSystem>();
+
+            mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
+            mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             var result = p.RemoveSdkEnable(file);
 
@@ -83,7 +125,7 @@ namespace UpgradeRepoTests
 }";
             var mockFS = new Mock<IFileSystem>();
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(globalJson);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = GlobalJsonFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             var result = p.RemoveSdkFromGlobalJson(file);
 
@@ -135,7 +177,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             p.EnableFeature(file);
 
@@ -177,7 +219,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockPackagesPropsFile)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockPackagesPropsFile)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockPackagesPropsFile).Result;
 
             p.FixPackageReferenceUpdate(file);

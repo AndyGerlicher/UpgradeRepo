@@ -3,11 +3,26 @@ using Gardener.Core.Json;
 using Gardener.Core.MSBuild;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace UpgradeRepo.LegacyCpv
 {
     internal class LegacyCpvPlugin : IUpgradePlugin
     {
+        private const string LegacyPackagesPropsFilePath = "Packages.props";
+        private const string DbPackagesPropsFile = "Directory.Packages.props";
+        private const string DbBuildPropsFile = "Directory.Build.props";
+        private const string DbBuildTargetsFile = "Directory.Build.targets";
+        private const string GlobalJsonFilePath = "global.json";
+        private const string LegacyCpvSdkName = "Microsoft.Build.CentralPackageVersions";
+
+        private static readonly string LegacyCpvSdkEnablePattern = @$"\s*<Sdk Name=""{LegacyCpvSdkName}""\s*(Version=""[\d|\.|\w|-]*"")?\s*/>";
+        private readonly ILogger _logger;
+
+        public LegacyCpvPlugin(ILogger logger)
+        {
+            _logger = logger;
+        }
         public Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
         {
             return fileSystem.FileExistsAsync(Path.Combine(options.Path, "Packages.props"));
@@ -15,44 +30,50 @@ namespace UpgradeRepo.LegacyCpv
 
         public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
         {
-            var legacyPath = Path.Combine(options.Path, "Packages.props");
-            var newPackagesPropsPath = Path.Combine(options.Path, "Directory.Packages.props");
-            var dbPropsPath = Path.Combine(options.Path, "Directory.Build.props");
-            var globalJsonPath = Path.Combine(options.Path, "global.json");
+            if (!(await fileSystem.FileExistsAsync(LegacyPackagesPropsFilePath)))
+            {
+                _logger.LogError("No Legacy Packages.props file");
+                return false;
+            }
 
-            Console.WriteLine(" * Renaming Packages.props -> Directory.Packages.props");
-            await fileSystem.RenameFileAsync(legacyPath, newPackagesPropsPath);
-            var dbPropsFile = await MSBuildFile.ReadAsync(fileSystem, dbPropsPath);
-            var newPackagesPropsFile = await MSBuildFile.ReadAsync(fileSystem, newPackagesPropsPath);
-            var globalJsonFile = await GlobalJsonFile.ReadAsync(fileSystem, globalJsonPath);
+            var dbPropsFile = await MSBuildFile.ReadAsync(fileSystem, DbBuildPropsFile);
+            var dbTargetsFile = await MSBuildFile.ReadAsync(fileSystem, DbBuildTargetsFile);
+            var pacakgesPropsFile = await MSBuildFile.ReadAsync(fileSystem, LegacyPackagesPropsFilePath);
+            var globalJsonFile = await GlobalJsonFile.ReadAsync(fileSystem, GlobalJsonFilePath);
 
             EnableFeature(dbPropsFile);
 
-            if (!FixPackageReferenceUpdate(newPackagesPropsFile))
+            if (!FixPackageReferenceUpdate(pacakgesPropsFile))
             {
-                throw new Exception("No Package Versions updated!");
+                _logger.LogError("No package versions were updated");
+                return false;
             }
 
-            Console.WriteLine(" * Removing existing references to CPV package");
-            RemoveSdkEnable(dbPropsFile);
+            _logger.LogDebug("Removing existing references to CPV package");
+            if (!RemoveSdkEnable(dbTargetsFile))
+            {
+                _logger.LogError("Couldn't remove SDK from Directory.Build.targets");
+                return false;
+            }
+
             RemoveSdkFromGlobalJson(globalJsonFile);
-            
-            await fileSystem.WriteAllTextAsync(newPackagesPropsPath, newPackagesPropsFile.Content);
-            await fileSystem.WriteAllTextAsync(dbPropsPath, dbPropsFile.Content);
-            await fileSystem.WriteAllTextAsync(globalJsonPath, globalJsonFile.Content);
-            
-            Console.WriteLine("Upgrade complete");
+
+            await fileSystem.WriteAllTextAsync(DbPackagesPropsFile, pacakgesPropsFile.Content);
+            await fileSystem.DeleteFileAsync(LegacyPackagesPropsFilePath);
+            await fileSystem.WriteAllTextAsync(DbBuildPropsFile, dbPropsFile.Content);
+            await fileSystem.WriteAllTextAsync(DbBuildTargetsFile, dbTargetsFile.Content);
+            await fileSystem.WriteAllTextAsync(GlobalJsonFilePath, globalJsonFile.Content);
+
             return true;
         }
 
         /// <summary>
-        /// Add EnableCentralPackageVersions property to the specified MSBuild file
+        /// Add EnableCentralPackageVersions property to the specified MSBuild file.
         /// </summary>
-        /// <param name="msBuildFile"></param>
-        /// <returns>new file contents</returns>
-        public void EnableFeature(MSBuildFile msBuildFile)
+        /// <param name="msBuildFile">MSBuild file to operate on.</param>
+        internal void EnableFeature(MSBuildFile msBuildFile)
         {
-            Console.WriteLine(" * Setting EnableCentralPackageVersions Property");
+            _logger.LogDebug("Setting EnableCentralPackageVersions Property");
             msBuildFile.RemoveProperty("EnableCentralPackageVersions");
             msBuildFile.SetProperties(new[] { new MSBuildFile.Property("ManagePackageVersionsCentrally", "true") });
         }
@@ -60,45 +81,50 @@ namespace UpgradeRepo.LegacyCpv
         /// <summary>
         /// Remove Microsoft.Build.CentralPackageVersions from global.json.
         /// </summary>
-        /// <param name="file"></param>
-        /// <returns></returns>
-        public bool RemoveSdkFromGlobalJson(GlobalJsonFile file)
+        /// <param name="file">Global.json file to operate on.</param>
+        /// <returns>True when the SDK was able to be removed.</returns>
+        internal bool RemoveSdkFromGlobalJson(GlobalJsonFile file)
         {
             // This isn't super critical. It doesn't do any harm leaving it in the file.
-            file.TryRemoveMsBuildSdk("Microsoft.Build.CentralPackageVersions");
-            
-            return true;
-        }
-
-        public bool RemoveSdkEnable(MSBuildFile msBuildFile)
-        {
-            // TODO: Not ideal here, way too specific
-            msBuildFile.RemoveTopLevelXml("  <Sdk Name=\"Microsoft.Build.CentralPackageVersions\" />");
-
-            var newContents = msBuildFile.Content;
-
-            // Be much more permissive in detecting if we missed it.
-            if (Regex.IsMatch(msBuildFile.Content, @"Name=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase) ||
-                Regex.IsMatch(msBuildFile.Content, @"SDK=""Microsoft.Build.CentralPackageVersions""", RegexOptions.IgnoreCase))
+            file.TryRemoveMsBuildSdk(LegacyCpvSdkName);
+            if (file.Content.Contains(LegacyCpvSdkName, StringComparison.OrdinalIgnoreCase))
             {
-                throw new Exception("Couldn't remove legacy SDK declaration");
+                _logger.LogInformation("Unable to remove SDK from global.json");
+                return false;
             }
 
             return true;
         }
 
-        public bool FixPackageReferenceUpdate(MSBuildFile packagesPropsFile)
+        internal bool RemoveSdkEnable(MSBuildFile msBuildFile)
         {
-            Console.WriteLine(" * Updating ItemGroup PackageReference -> PackageVersion");
+            // TODO: Not ideal here, way too specific
+            var sdkTextMatch = Regex.Match(msBuildFile.Content, LegacyCpvSdkEnablePattern, RegexOptions.IgnoreCase);
+
+            if (sdkTextMatch.Success)
+            {
+                msBuildFile.RemoveTopLevelXml(sdkTextMatch.Value);
+
+                // Be much more permissive in detecting if we missed it.
+                return !Regex.IsMatch(msBuildFile.Content, @$"Name=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase) &&
+                       !Regex.IsMatch(msBuildFile.Content, @$"SDK=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase);
+            }
+
+            return false;
+        }
+
+        internal bool FixPackageReferenceUpdate(MSBuildFile packagesPropsFile)
+        {
+            _logger.LogDebug("Updating ItemGroup PackageReference -> PackageVersion");
 
             // Simple regex line by line. Won't work if the Update is on a new line, which is valid
             // XML but I doubt exists anywhere.
             const string packageVersionUpdatePattern = @"<PackageReference\s+Update=";
             var dirty = false;
             var sb = new StringBuilder();
-            StringReader reader = new StringReader(packagesPropsFile.Content);
+            var reader = new StringReader(packagesPropsFile.Content);
             var line = reader.ReadLine();
-            
+
             while (line != null)
             {
                 var updatedLine = line;
