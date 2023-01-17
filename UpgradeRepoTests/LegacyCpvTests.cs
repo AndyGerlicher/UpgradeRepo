@@ -15,86 +15,67 @@ namespace UpgradeRepoTests
 {
     public class LegacyCpvTests
     {
-        [Fact]
-        public void LegacyCpvRemoveSdkElementTest()
+        [Theory]
+        [InlineData("<Sdk Name=\"Microsoft.Build.CentralPackageVersions\" />")]
+        [InlineData("<Sdk Name=\"Microsoft.Build.CentralPackageVersions\" Version=\"1.0-pre\"/>")]
+        [InlineData("<Sdk Name=\"Microsoft.Build.CentralPackageVersions\"   Version=\"2.0.0\" />")]
+        public void LegacyCpvRemoveFeatureTest(string sdkDeclaration)
         {
-            string mockFilePath = @"c:\temp\doesnotexist.csproj";
+            string mockDbTargetsPath = @"c:\temp\Directory.Build.targets";
+            string mockDbPropsPath = @"c:\temp\Directory.Build.props";
 
-            var xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+            var dbTargetsXmlFormat = @"<?xml version=""1.0"" encoding=""utf-8""?>
 <!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
 <Project>
-  <Sdk Name=""Microsoft.Build.CentralPackageVersions"" />
+  {0}
   <!-- Comment -->
   <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
     <IsTestProject>true</IsTestProject>
-    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
-    <QInstrumentForCoverage>false</QInstrumentForCoverage>
   </PropertyGroup>
 </Project>";
 
-            var expectedXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+            var expectedDbTargetsXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
 <!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
 <Project>
   <!-- Comment -->
   <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
     <IsTestProject>true</IsTestProject>
-    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
-    <QInstrumentForCoverage>false</QInstrumentForCoverage>
   </PropertyGroup>
 </Project>";
+
+            string dbPropsXml = @"<Project>
+  <PropertyGroup>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+
+    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
+    <EnableCentralPackageVersions Condition=""'$(MSBuildProjectExtension)' == '.nuproj'"">true</EnableCentralPackageVersions>
+  </PropertyGroup>
+</Project>";
+            string expectedDbPropsXml = @"<Project>
+  <PropertyGroup>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+
+    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
+  </PropertyGroup>
+</Project>"; ;
 
             var mockFS = new Mock<IFileSystem>();
 
-            mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
-            mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
+            mockFS.Setup(_ => _.ReadAllTextAsync(mockDbTargetsPath))
+                .ReturnsAsync(string.Format(dbTargetsXmlFormat, sdkDeclaration));
+            mockFS.Setup(_ => _.FileExistsAsync(mockDbTargetsPath)).ReturnsAsync(true);
+            mockFS.Setup(_ => _.ReadAllTextAsync(mockDbPropsPath)).ReturnsAsync(dbPropsXml);
+            mockFS.Setup(_ => _.FileExistsAsync(mockDbPropsPath)).ReturnsAsync(true);
+
             var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
-            var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
-            var result = p.RemoveSdkEnable(file);
+            var file = MSBuildFile.ReadAsync(mockFS.Object, mockDbTargetsPath).Result;
+            var file2 = MSBuildFile.ReadAsync(mockFS.Object, mockDbPropsPath).Result;
+            var result = p.DisableLegacyFeature(file, file2);
 
             mockFS.VerifyAll();
             result.ShouldBeTrue();
-            file.Content.ShouldBe(expectedXml);
-        }
-
-        [Fact]
-        public void LegacyCpvRemoveSdkElementWithVersionTest()
-        {
-            string mockFilePath = @"c:\temp\doesnotexist.csproj";
-
-            var xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
-<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
-<Project>
-  <Sdk Name=""Microsoft.Build.CentralPackageVersions"" Version=""1.0-pre""/>
-  <!-- Comment -->
-  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
-    <IsTestProject>true</IsTestProject>
-    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
-    <QInstrumentForCoverage>false</QInstrumentForCoverage>
-  </PropertyGroup>
-</Project>";
-
-            var expectedXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
-<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
-<Project>
-  <!-- Comment -->
-  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
-    <IsTestProject>true</IsTestProject>
-    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)private\devtools\dbs\CodeAnalysis_ForTests.ruleset</CodeAnalysisRuleSet>
-    <QInstrumentForCoverage>false</QInstrumentForCoverage>
-  </PropertyGroup>
-</Project>";
-
-            var mockFS = new Mock<IFileSystem>();
-
-            mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
-            mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
-            var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
-            var result = p.RemoveSdkEnable(file);
-
-            mockFS.VerifyAll();
-            result.ShouldBeTrue();
-            file.Content.ShouldBe(expectedXml);
+            file.Content.ShouldBe(expectedDbTargetsXml);
+            file2.Content.ShouldBe(expectedDbPropsXml);
         }
 
         [Fact]
@@ -150,9 +131,6 @@ namespace UpgradeRepoTests
   </PropertyGroup>
   <PropertyGroup>
     <PlatformTarget>AnyCPU</PlatformTarget>
-
-    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
-    <EnableCentralPackageVersions Condition=""'$(MSBuildProjectExtension)' == '.nuproj'"">true</EnableCentralPackageVersions>
   </PropertyGroup>
 </Project>";
             string expectedXml = @"<Project>
@@ -164,12 +142,16 @@ namespace UpgradeRepoTests
 
     <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
     <Platform Condition="" '$(Platform)' == '' "">x64</Platform>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!-- Enable Central Package Management unless the project is using packages.config or is a project that does not support PackageReference -->
+    <ManagePackageVersionsCentrally Condition=""'$(ManagePackageVersionsCentrally)' == ''
+      And !Exists('$(MSBuildProjectDirectory)\packages.config')
+      And '$(MSBuildProjectExtension)' != '.vcxproj'
+      And '$(MSBuildProjectExtension)' != '.ccproj'
+      And '$(MSBuildProjectExtension)' != '.nuproj'"">true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <PropertyGroup>
     <PlatformTarget>AnyCPU</PlatformTarget>
-
-    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
   </PropertyGroup>
 </Project>";
 
@@ -179,7 +161,7 @@ namespace UpgradeRepoTests
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
             var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
-            p.EnableFeature(file);
+            p.EnableCpmFeature(file);
 
             file.Content.ShouldBe(expectedXml);
         }
