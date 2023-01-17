@@ -25,7 +25,6 @@ namespace UpgradeRepo.Cpv
         public static bool LineContainsPackageReference(this string line)
         {
             return Regex.IsMatch(line, @"<PackageReference Include=""(?<name>[^""]*)"".*Version=""(?<version>[^""]*)""");
-            return line.Contains("PackageReference", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>

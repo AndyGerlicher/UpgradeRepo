@@ -91,7 +91,7 @@ namespace Gardener.Core.MSBuild
             return false;
         }
 
-        protected XmlNodeList SelectNodes(string xpath)
+        protected XmlNodeList? SelectNodes(string xpath)
         {
             if (_xmlNamespaceManager != null)
             {
@@ -122,7 +122,7 @@ namespace Gardener.Core.MSBuild
             // This may throw an XmlException if the content is invalid.
             xmlDocument.Load(xmlReader);
 
-            if (!string.IsNullOrEmpty(xmlDocument.DocumentElement.NamespaceURI))
+            if (!string.IsNullOrEmpty(xmlDocument.DocumentElement?.NamespaceURI))
             {
                 _xmlNamespaceManager = new XmlNamespaceManager(xmlDocument.NameTable);
                 _xmlNamespaceManager.AddNamespace("msbuild", xmlDocument.DocumentElement.NamespaceURI);

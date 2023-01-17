@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Gardener.Core;
 using Gardener.Core.Json;
 using Gardener.Core.MSBuild;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Shouldly;
 using UpgradeRepo.LegacyCpv;
@@ -46,7 +47,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             var result = p.RemoveSdkEnable(file);
 
@@ -87,7 +88,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             var result = p.RemoveSdkEnable(file);
 
@@ -124,7 +125,7 @@ namespace UpgradeRepoTests
 }";
             var mockFS = new Mock<IFileSystem>();
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(globalJson);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = GlobalJsonFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             var result = p.RemoveSdkFromGlobalJson(file);
 
@@ -176,7 +177,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockFilePath)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockFilePath).Result;
             p.EnableFeature(file);
 
@@ -218,7 +219,7 @@ namespace UpgradeRepoTests
 
             mockFS.Setup(_ => _.ReadAllTextAsync(mockPackagesPropsFile)).ReturnsAsync(xml);
             mockFS.Setup(_ => _.FileExistsAsync(mockPackagesPropsFile)).ReturnsAsync(true);
-            var p = new LegacyCpvPlugin();
+            var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
             var file = MSBuildFile.ReadAsync(mockFS.Object, mockPackagesPropsFile).Result;
 
             p.FixPackageReferenceUpdate(file);

@@ -148,7 +148,7 @@ namespace UpgradeRepo.Cpv
         {
             var packages = from package in _packageMap
                 orderby package.Key
-                select new Package(package.Key, package.Value.Min((p) => p.Package.Version));
+                select new Package(package.Key, package.Value.Min(p => p.Package.Version));
 
             return ProjectFileHelpers.GeneratePackageProps(packages);
         }

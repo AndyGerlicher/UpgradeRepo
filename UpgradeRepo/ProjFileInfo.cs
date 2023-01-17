@@ -65,7 +65,7 @@ namespace UpgradeRepo
                 Debugger.Break();
             }
             Byte[] bytes = File.ReadAllBytes(path);
-            Encoding encoding = null;
+            Encoding? encoding = null;
 
             // Test UTF8 with BOM. This check can easily be copied and adapted
             // to detect many other encodings that use BOMs.
@@ -102,10 +102,7 @@ namespace UpgradeRepo
                 }
             }
             // fall back to default ANSI encoding.
-            if (encoding == null)
-            {
-                encoding = Encoding.GetEncoding(1252);
-            }
+            encoding ??= Encoding.GetEncoding(1252);
 
             bool endsWithNewLine = bytes.EndsWith(encoding.GetBytes(Environment.NewLine));
 
