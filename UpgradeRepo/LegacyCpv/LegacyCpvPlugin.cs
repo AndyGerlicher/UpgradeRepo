@@ -1,4 +1,6 @@
-﻿using Gardener.Core;
+﻿using System.ComponentModel.Design;
+using System.Reflection.Metadata.Ecma335;
+using Gardener.Core;
 using Gardener.Core.Json;
 using Gardener.Core.MSBuild;
 using System.Text;
@@ -16,7 +18,21 @@ namespace UpgradeRepo.LegacyCpv
         private const string GlobalJsonFilePath = "global.json";
         private const string LegacyCpvSdkName = "Microsoft.Build.CentralPackageVersions";
 
+        private const string PropertyComment =
+            @"<!-- Enable Central Package Management unless the project is using packages.config or is a project that does not support PackageReference -->";
+        private const string PropertyCondition = @"'$(ManagePackageVersionsCentrally)' == ''
+{0}And !Exists('$(MSBuildProjectDirectory)\packages.config')
+{0}And '$(MSBuildProjectExtension)' != '.vcxproj'
+{0}And '$(MSBuildProjectExtension)' != '.ccproj'
+{0}And '$(MSBuildProjectExtension)' != '.nuproj'";
+
+        private const string LegacyPackageReferenceVersionDefinition = @"<PackageReference\s+Update=";
+        private const string CpmPackageReferenceVersionDefinition = "<PackageVersion Include=";
+
+        private static readonly Regex PackageReferenceRegex = new(LegacyPackageReferenceVersionDefinition, RegexOptions.Compiled);
+
         private static readonly string LegacyCpvSdkEnablePattern = @$"\s*<Sdk Name=""{LegacyCpvSdkName}""\s*(Version=""[\d|\.|\w|-]*"")?\s*/>";
+
         private readonly ILogger _logger;
 
         public LegacyCpvPlugin(ILogger logger)
@@ -25,23 +41,21 @@ namespace UpgradeRepo.LegacyCpv
         }
         public Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
         {
-            return fileSystem.FileExistsAsync(Path.Combine(options.Path, "Packages.props"));
+            return CheckRequiredFiles(fileSystem);
         }
 
         public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
         {
-            if (!(await fileSystem.FileExistsAsync(LegacyPackagesPropsFilePath)))
+            if (!await CheckRequiredFiles(fileSystem))
             {
-                _logger.LogError("No Legacy Packages.props file");
                 return false;
             }
 
             var dbPropsFile = await MSBuildFile.ReadAsync(fileSystem, DbBuildPropsFile);
             var dbTargetsFile = await MSBuildFile.ReadAsync(fileSystem, DbBuildTargetsFile);
             var pacakgesPropsFile = await MSBuildFile.ReadAsync(fileSystem, LegacyPackagesPropsFilePath);
-            var globalJsonFile = await GlobalJsonFile.ReadAsync(fileSystem, GlobalJsonFilePath);
 
-            EnableFeature(dbPropsFile);
+            EnableCpmFeature(dbPropsFile);
 
             if (!FixPackageReferenceUpdate(pacakgesPropsFile))
             {
@@ -50,32 +64,47 @@ namespace UpgradeRepo.LegacyCpv
             }
 
             _logger.LogDebug("Removing existing references to CPV package");
-            if (!RemoveSdkEnable(dbTargetsFile))
+            if (!DisableLegacyFeature(dbTargetsFile, dbPropsFile))
             {
                 _logger.LogError("Couldn't remove SDK from Directory.Build.targets");
                 return false;
             }
 
-            RemoveSdkFromGlobalJson(globalJsonFile);
-
             await fileSystem.WriteAllTextAsync(DbPackagesPropsFile, pacakgesPropsFile.Content);
             await fileSystem.DeleteFileAsync(LegacyPackagesPropsFilePath);
             await fileSystem.WriteAllTextAsync(DbBuildPropsFile, dbPropsFile.Content);
             await fileSystem.WriteAllTextAsync(DbBuildTargetsFile, dbTargetsFile.Content);
-            await fileSystem.WriteAllTextAsync(GlobalJsonFilePath, globalJsonFile.Content);
+
+            // Optionally remove global.json file contents
+            if (await fileSystem.FileExistsAsync(GlobalJsonFilePath))
+            {
+                var globalJsonFile = await GlobalJsonFile.ReadAsync(fileSystem, GlobalJsonFilePath);
+                RemoveSdkFromGlobalJson(globalJsonFile);
+                await fileSystem.WriteAllTextAsync(GlobalJsonFilePath, globalJsonFile.Content);
+            }
 
             return true;
         }
 
         /// <summary>
-        /// Add EnableCentralPackageVersions property to the specified MSBuild file.
+        /// Add ManagePackageVersionsCentrally property to the specified MSBuild file.
         /// </summary>
-        /// <param name="msBuildFile">MSBuild file to operate on.</param>
-        internal void EnableFeature(MSBuildFile msBuildFile)
+        /// <param name="dbPropsFile">MSBuild file to operate on.</param>
+        internal void EnableCpmFeature(MSBuildFile dbPropsFile)
         {
             _logger.LogDebug("Setting EnableCentralPackageVersions Property");
-            msBuildFile.RemoveProperty("EnableCentralPackageVersions");
-            msBuildFile.SetProperties(new[] { new MSBuildFile.Property("ManagePackageVersionsCentrally", "true") });
+
+            // Add the ManagePackageVersionsCentrally with condition to disable in certain conditions.
+            string conditionText = string.Format(PropertyCondition, dbPropsFile.PropertyGroupIndentation + dbPropsFile.PropertyIndentation);
+            dbPropsFile.SetProperties(new[]
+            {
+                new MSBuildFile.Property("ManagePackageVersionsCentrally", "true", conditionText)
+            });
+
+            // A bit of a hack, but add a comment above the property we just added.
+            dbPropsFile.Content = dbPropsFile.Content.Replace(
+                dbPropsFile.PropertyIndentation + "<ManagePackageVersionsCentrally ",
+                dbPropsFile.LineEnding + dbPropsFile.PropertyIndentation + PropertyComment + dbPropsFile.LineEnding + dbPropsFile.PropertyIndentation + "<ManagePackageVersionsCentrally ");
         }
 
         /// <summary>
@@ -96,41 +125,55 @@ namespace UpgradeRepo.LegacyCpv
             return true;
         }
 
-        internal bool RemoveSdkEnable(MSBuildFile msBuildFile)
+        /// <summary>
+        /// Disable Existing CPV feature (property + SDK)
+        /// </summary>
+        /// <param name="dbTargetsFile">Directory.Build.targets file to operate on.</param>
+        /// <param name="dbPropsFile">Directory.Build.props file to operate on.</param>
+        /// <returns>True when the SDK could be removed (property may be left behind).</returns>
+        internal bool DisableLegacyFeature(MSBuildFile dbTargetsFile, MSBuildFile dbPropsFile)
         {
-            // TODO: Not ideal here, way too specific
-            var sdkTextMatch = Regex.Match(msBuildFile.Content, LegacyCpvSdkEnablePattern, RegexOptions.IgnoreCase);
+            // If the property isn't removed, it won't harm anything.
+            _logger.LogDebug("Removing EnableCentralPackageVersions property from Directory.Build.props");
+            dbPropsFile.RemoveProperty("EnableCentralPackageVersions");
+
+            _logger.LogDebug("Removing SDK declaration from Directory.Build.targets");
+            var sdkTextMatch = Regex.Match(dbTargetsFile.Content, LegacyCpvSdkEnablePattern, RegexOptions.IgnoreCase);
 
             if (sdkTextMatch.Success)
             {
-                msBuildFile.RemoveTopLevelXml(sdkTextMatch.Value);
+                dbTargetsFile.RemoveTopLevelXml(sdkTextMatch.Value);
 
                 // Be much more permissive in detecting if we missed it.
-                return !Regex.IsMatch(msBuildFile.Content, @$"Name=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase) &&
-                       !Regex.IsMatch(msBuildFile.Content, @$"SDK=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase);
+                return !Regex.IsMatch(dbTargetsFile.Content, @$"Name=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase) &&
+                       !Regex.IsMatch(dbTargetsFile.Content, @$"SDK=""{LegacyCpvSdkName}""", RegexOptions.IgnoreCase);
             }
 
             return false;
         }
 
+        /// <summary>
+        /// Change PackageReference to PackageVersion.
+        /// </summary>
+        /// <param name="packagesPropsFile">Packages.props file to operate on.</param>
+        /// <returns>True when at least one update was made.</returns>
         internal bool FixPackageReferenceUpdate(MSBuildFile packagesPropsFile)
         {
             _logger.LogDebug("Updating ItemGroup PackageReference -> PackageVersion");
 
             // Simple regex line by line. Won't work if the Update is on a new line, which is valid
             // XML but I doubt exists anywhere.
-            const string packageVersionUpdatePattern = @"<PackageReference\s+Update=";
             var dirty = false;
-            var sb = new StringBuilder();
+            var sb = new StringBuilder(packagesPropsFile.Content.Length);
             var reader = new StringReader(packagesPropsFile.Content);
             var line = reader.ReadLine();
 
             while (line != null)
             {
                 var updatedLine = line;
-                if (Regex.IsMatch(line, packageVersionUpdatePattern))
+                if (PackageReferenceRegex.IsMatch(line))
                 {
-                    updatedLine = Regex.Replace(line, packageVersionUpdatePattern, "<PackageVersion Include=");
+                    updatedLine = PackageReferenceRegex.Replace(line, CpmPackageReferenceVersionDefinition);
                     dirty = true;
                 }
 
@@ -144,6 +187,29 @@ namespace UpgradeRepo.LegacyCpv
             }
 
             return dirty;
+        }
+
+        private async Task<bool> CheckRequiredFiles(IFileSystem fileSystem)
+        {
+            bool missingFiles = false;
+
+            if (!await fileSystem.FileExistsAsync(DbBuildPropsFile))
+            {
+                missingFiles = true;
+                _logger.LogError("Could not find Directory.Build.props file.");
+            }
+            if (!await fileSystem.FileExistsAsync(DbBuildTargetsFile))
+            {
+                missingFiles = true;
+                _logger.LogError("Could not find Directory.Build.targetsfile.");
+            }
+            if (!await fileSystem.FileExistsAsync(LegacyPackagesPropsFilePath))
+            {
+                missingFiles = true;
+                _logger.LogError("Could not find legacy Packages.props file.");
+            }
+
+            return !missingFiles;
         }
     }
 }
