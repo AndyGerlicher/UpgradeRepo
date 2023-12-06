@@ -1,12 +1,8 @@
-﻿using NuGet.Versioning;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using NuGet.Versioning;
 
-namespace UpgradeRepo.Cpv
+namespace UpgradeRepo.Cpm
 {
     internal static class ProjectFileHelpers
     {

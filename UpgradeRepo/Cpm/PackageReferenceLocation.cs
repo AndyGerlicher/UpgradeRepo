@@ -1,6 +1,4 @@
-﻿using NuGet.Versioning;
-
-namespace UpgradeRepo.Cpv;
+﻿namespace UpgradeRepo.Cpm;
 
 internal class PackageReferenceLocation
 {

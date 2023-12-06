@@ -1,6 +1,6 @@
 ﻿using System.Text;
 
-namespace UpgradeRepo.Cpv
+namespace UpgradeRepo.Cpm
 {
     internal class ProjectFile
     {

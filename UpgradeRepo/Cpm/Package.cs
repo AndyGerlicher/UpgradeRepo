@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using NuGet.Versioning;
+﻿using NuGet.Versioning;
 
-namespace UpgradeRepo.Cpv
+namespace UpgradeRepo.Cpm
 {
     internal class Package
     {

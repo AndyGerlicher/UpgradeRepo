@@ -1,18 +1,11 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 using Gardener.Core;
 using Gardener.Core.MSBuild;
-using NuGet.Versioning;
 
-namespace UpgradeRepo.Cpv
+namespace UpgradeRepo.Cpm
 {
-    internal class CpvUpgradePlugin : IUpgradePlugin
+    internal class CpmUpgradePlugin : IUpgradePlugin
     {
         private readonly ConcurrentDictionary<string, ConcurrentBag<PackageReferenceLocation>> _packageMap = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentBag<ProjectFile> _files = new();

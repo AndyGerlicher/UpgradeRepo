@@ -1,10 +1,10 @@
 using NuGet.Versioning;
-using UpgradeRepo.Cpv;
 using Shouldly;
+using UpgradeRepo.Cpm;
 
 namespace UpgradeRepoTests
 {
-    public class CpvTests
+    public class CpmTests
     {
         private readonly Func<Package, string> _defaultResolver = _ => string.Empty;
 
@@ -37,7 +37,7 @@ namespace UpgradeRepoTests
             using var testFile =
                 TestProjectFile.CreateWithPackage("Microsoft.Azure.WebJobs.Extensions.ServiceBus", "5.0.0-beta.3");
 
-            var vpvm = new CpvUpgradePlugin();
+            var vpvm = new CpmUpgradePlugin();
             vpvm.AddFile(testFile.FullPath);
             vpvm.ReadAllPackages();
             var packages = vpvm.GetPackages().ToList();
@@ -61,7 +61,7 @@ namespace UpgradeRepoTests
                     Tuple.Create("Other", "3.5")
                 });
 
-            var vpvm = new CpvUpgradePlugin();
+            var vpvm = new CpmUpgradePlugin();
             vpvm.AddFile(testFile.FullPath);
             vpvm.ReadAllPackages();
             
@@ -86,7 +86,7 @@ namespace UpgradeRepoTests
                     Tuple.Create("Microsoft.Azure.WebJobs.Extensions.ServiceBus", "6.0"),
                 });
 
-            var vpvm = new CpvUpgradePlugin();
+            var vpvm = new CpmUpgradePlugin();
             vpvm.AddFile(testFile.FullPath);
             vpvm.ReadAllPackages();
 
@@ -112,7 +112,7 @@ namespace UpgradeRepoTests
                     Tuple.Create("Other", "3.0"),
                 });
 
-            var vpvm = new CpvUpgradePlugin();
+            var vpvm = new CpmUpgradePlugin();
             vpvm.AddFile(testFile.FullPath);
             vpvm.ReadAllPackages();
             vpvm.WriteAllUpdates();

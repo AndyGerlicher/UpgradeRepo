@@ -4,10 +4,10 @@ using System.Reflection;
 using Microsoft.Extensions.Logging;
 using NLog.Config;
 using NLog.Targets;
-using UpgradeRepo.Cpv;
 using UpgradeRepo.LegacyCpv;
 using UpgradeRepo.Rsp;
 using NLog.Extensions.Logging;
+using UpgradeRepo.Cpm;
 
 namespace UpgradeRepo
 {
@@ -41,12 +41,12 @@ namespace UpgradeRepo
         {
             switch (obj)
             {
-                case CpvOptions cpv:
-                    if (string.IsNullOrEmpty(cpv.Path))
+                case CpmOptions cpm:
+                    if (string.IsNullOrEmpty(cpm.Path))
                     {
-                        cpv.Path = Environment.CurrentDirectory;
+                        cpm.Path = Environment.CurrentDirectory;
                     }
-                    await RunAsync(new CpvUpgradePlugin(), cpv);
+                    await RunAsync(new CpmUpgradePlugin(), cpm);
                     break;
                 case LegacyCpvOptions legacyCpv:
                     if (string.IsNullOrEmpty(legacyCpv.Path))
@@ -115,8 +115,8 @@ namespace UpgradeRepo
         }
     }
 
-    [Verb("cpv", HelpText = "Onboard to CPV")]
-    public class CpvOptions : ICommandLineOptions
+    [Verb("cpm", HelpText = "Onboard to CPM")]
+    public class CpmOptions : ICommandLineOptions
     {
         public string Path { get; set; } = Environment.CurrentDirectory;
     }
