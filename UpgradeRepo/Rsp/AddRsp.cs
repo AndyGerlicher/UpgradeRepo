@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Gardener.Core;
+﻿using Gardener.Core;
 
 namespace UpgradeRepo.Rsp
 {
@@ -22,6 +17,8 @@ namespace UpgradeRepo.Rsp
 -NodeReuse:false
 -Restore
 -Property:NuGetInteractive=True
+-graphBuild
+-terminallogger
 ";
             
             string rspFilePath = Path.Combine(options.Path, rspFileName);

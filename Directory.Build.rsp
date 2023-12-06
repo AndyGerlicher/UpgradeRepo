@@ -3,3 +3,5 @@
 -NodeReuse:false
 -Restore
 -Property:NuGetInteractive=True
+-graphBuild
+-terminallogger
