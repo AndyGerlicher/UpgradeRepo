@@ -1,7 +1,5 @@
 ﻿// Copyright (C) Microsoft Corporation. All Rights Reserved.
 
-using System.Threading.Tasks;
-
 namespace Gardener.Core
 {
     public interface IFileSystem
@@ -19,5 +17,7 @@ namespace Gardener.Core
         Task DeleteFileAsync(string path);
 
         Task RenameFileAsync(string path, string newName);
+
+        Task<IReadOnlyCollection<string>> EnumerateFiles(IReadOnlyCollection<string> searchPatterns);
     }
 }

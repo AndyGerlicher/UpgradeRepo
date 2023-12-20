@@ -24,40 +24,48 @@ namespace UpgradeRepoTests
             string mockDbTargetsPath = @"c:\temp\Directory.Build.targets";
             string mockDbPropsPath = @"c:\temp\Directory.Build.props";
 
-            var dbTargetsXmlFormat = @"<?xml version=""1.0"" encoding=""utf-8""?>
-<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
-<Project>
-  {0}
-  <!-- Comment -->
-  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
-</Project>";
+            var dbTargetsXmlFormat = """
+                                     <?xml version="1.0" encoding="utf-8"?>
+                                     <!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
+                                     <Project>
+                                       {0}
+                                       <!-- Comment -->
+                                       <PropertyGroup Condition=" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' ">
+                                         <IsTestProject>true</IsTestProject>
+                                       </PropertyGroup>
+                                     </Project>
+                                     """;
 
-            var expectedDbTargetsXml = @"<?xml version=""1.0"" encoding=""utf-8""?>
-<!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
-<Project>
-  <!-- Comment -->
-  <PropertyGroup Condition="" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' "">
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
-</Project>";
+            var expectedDbTargetsXml = """
+                                       <?xml version="1.0" encoding="utf-8"?>
+                                       <!-- This targets file is included by Microsoft.Common.targets and is therefore included in each *proj file -->
+                                       <Project>
+                                         <!-- Comment -->
+                                         <PropertyGroup Condition=" '$(TestProjectType)' == 'UnitTest' or '$(IsTestProject)' == 'true' ">
+                                           <IsTestProject>true</IsTestProject>
+                                         </PropertyGroup>
+                                       </Project>
+                                       """;
 
-            string dbPropsXml = @"<Project>
-  <PropertyGroup>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-
-    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
-    <EnableCentralPackageVersions Condition=""'$(MSBuildProjectExtension)' == '.nuproj'"">true</EnableCentralPackageVersions>
-  </PropertyGroup>
-</Project>";
-            string expectedDbPropsXml = @"<Project>
-  <PropertyGroup>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-
-    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
-  </PropertyGroup>
-</Project>"; ;
+            string dbPropsXml = """
+                                <Project>
+                                  <PropertyGroup>
+                                    <PlatformTarget>AnyCPU</PlatformTarget>
+                                
+                                    <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
+                                    <EnableCentralPackageVersions Condition="'$(MSBuildProjectExtension)' == '.nuproj'">true</EnableCentralPackageVersions>
+                                  </PropertyGroup>
+                                </Project>
+                                """;
+            string expectedDbPropsXml = """
+                                        <Project>
+                                          <PropertyGroup>
+                                            <PlatformTarget>AnyCPU</PlatformTarget>
+                                        
+                                            <!-- NuProj projects do not support PackageReference out-of-the-box but we use them anyway, enable central package versions for them as well -->
+                                          </PropertyGroup>
+                                        </Project>
+                                        """; ;
 
             var mockFS = new Mock<IFileSystem>();
 
@@ -82,28 +90,32 @@ namespace UpgradeRepoTests
         public void RemoveGloblJsonSdkTest()
         {
             string mockFilePath = @"c:\temp\global.json";
-            var globalJson = @"{
-  ""sdk"": {
-    ""version"": ""7.0.100""
-  },
-  ""msbuild-sdks"": {
-    ""Microsoft.Build.CentralPackageVersions"": ""2.1.3"",
-    ""Microsoft.Build.NoTargets"": ""3.3.0"",
-    ""Microsoft.Build.Traversal"": ""3.0.54"",
-    ""MSBuild.NpmRestore"": ""1.0.5"",
-    ""Microsoft.Build.CentralPackageVersions"": ""2.1.3""
-  }
-}";
-            var expectedGlobalJson = @"{
-  ""sdk"": {
-    ""version"": ""7.0.100""
-  },
-  ""msbuild-sdks"": {
-    ""Microsoft.Build.NoTargets"": ""3.3.0"",
-    ""Microsoft.Build.Traversal"": ""3.0.54"",
-    ""MSBuild.NpmRestore"": ""1.0.5"",
-  }
-}";
+            var globalJson = """
+                             {
+                               "sdk": {
+                                 "version": "7.0.100"
+                               },
+                               "msbuild-sdks": {
+                                 "Microsoft.Build.CentralPackageVersions": "2.1.3",
+                                 "Microsoft.Build.NoTargets": "3.3.0",
+                                 "Microsoft.Build.Traversal": "3.0.54",
+                                 "MSBuild.NpmRestore": "1.0.5",
+                                 "Microsoft.Build.CentralPackageVersions": "2.1.3"
+                               }
+                             }
+                             """;
+            var expectedGlobalJson = """
+                                     {
+                                       "sdk": {
+                                         "version": "7.0.100"
+                                       },
+                                       "msbuild-sdks": {
+                                         "Microsoft.Build.NoTargets": "3.3.0",
+                                         "Microsoft.Build.Traversal": "3.0.54",
+                                         "MSBuild.NpmRestore": "1.0.5",
+                                       }
+                                     }
+                                     """;
             var mockFS = new Mock<IFileSystem>();
             mockFS.Setup(_ => _.ReadAllTextAsync(mockFilePath)).ReturnsAsync(globalJson);
             var p = new LegacyCpvPlugin(new LoggerFactory().CreateLogger<LegacyCpvPlugin>());
@@ -119,41 +131,45 @@ namespace UpgradeRepoTests
         public void EnableFeatureTest()
         {
             string mockFilePath = @"c:\temp\doesnotexist\Directory.Build.props";
-            string xml = @"<Project>
-  <PropertyGroup>
-    <!--
-      Enlistment root is based off of wherever this file is.  Be sure not to set this property anywhere else.
-    -->
-    <EnlistmentRoot>$(MSBuildThisFileDirectory.TrimEnd('\\'))</EnlistmentRoot>
-
-    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
-    <Platform Condition="" '$(Platform)' == '' "">x64</Platform>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-  </PropertyGroup>
-</Project>";
-            string expectedXml = @"<Project>
-  <PropertyGroup>
-    <!--
-      Enlistment root is based off of wherever this file is.  Be sure not to set this property anywhere else.
-    -->
-    <EnlistmentRoot>$(MSBuildThisFileDirectory.TrimEnd('\\'))</EnlistmentRoot>
-
-    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>
-    <Platform Condition="" '$(Platform)' == '' "">x64</Platform>
-
-    <!-- Enable Central Package Management unless the project is using packages.config or is a project that does not support PackageReference -->
-    <ManagePackageVersionsCentrally Condition=""'$(ManagePackageVersionsCentrally)' == ''
-      And !Exists('$(MSBuildProjectDirectory)\packages.config')
-      And '$(MSBuildProjectExtension)' != '.vcxproj'
-      And '$(MSBuildProjectExtension)' != '.ccproj'
-      And '$(MSBuildProjectExtension)' != '.nuproj'"">true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-  </PropertyGroup>
-</Project>";
+            string xml = """
+                         <Project>
+                           <PropertyGroup>
+                             <!--
+                               Enlistment root is based off of wherever this file is.  Be sure not to set this property anywhere else.
+                             -->
+                             <EnlistmentRoot>$(MSBuildThisFileDirectory.TrimEnd('\\'))</EnlistmentRoot>
+                         
+                             <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+                             <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+                           </PropertyGroup>
+                           <PropertyGroup>
+                             <PlatformTarget>AnyCPU</PlatformTarget>
+                           </PropertyGroup>
+                         </Project>
+                         """;
+            string expectedXml = """
+                                 <Project>
+                                   <PropertyGroup>
+                                     <!--
+                                       Enlistment root is based off of wherever this file is.  Be sure not to set this property anywhere else.
+                                     -->
+                                     <EnlistmentRoot>$(MSBuildThisFileDirectory.TrimEnd('\\'))</EnlistmentRoot>
+                                 
+                                     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+                                     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+                                 
+                                     <!-- Enable Central Package Management unless the project is using packages.config or is a project that does not support PackageReference -->
+                                     <ManagePackageVersionsCentrally Condition="'$(ManagePackageVersionsCentrally)' == ''
+                                       And !Exists('$(MSBuildProjectDirectory)\packages.config')
+                                       And '$(MSBuildProjectExtension)' != '.vcxproj'
+                                       And '$(MSBuildProjectExtension)' != '.ccproj'
+                                       And '$(MSBuildProjectExtension)' != '.nuproj'">true</ManagePackageVersionsCentrally>
+                                   </PropertyGroup>
+                                   <PropertyGroup>
+                                     <PlatformTarget>AnyCPU</PlatformTarget>
+                                   </PropertyGroup>
+                                 </Project>
+                                 """;
 
             var mockFS = new Mock<IFileSystem>();
 
@@ -170,32 +186,36 @@ namespace UpgradeRepoTests
         public void FixPackageReferenceUpdateTest()
         {
             string mockPackagesPropsFile = @"c:\temp\doesnotexist.props";
-            string xml = @"<Project>
-  <PropertyGroup>
-    <!-- These are used to keep packages which should upgrade together consistent -->
-    <MSBuildPackagesVersion>17.5.0-preview-22555-01</MSBuildPackagesVersion>
-    <NugetPackagesVersion>6.3.1</NugetPackagesVersion>
-  </PropertyGroup>
+            string xml = """
+                         <Project>
+                           <PropertyGroup>
+                             <!-- These are used to keep packages which should upgrade together consistent -->
+                             <MSBuildPackagesVersion>17.5.0-preview-22555-01</MSBuildPackagesVersion>
+                             <NugetPackagesVersion>6.3.1</NugetPackagesVersion>
+                           </PropertyGroup>
+                         
+                           <ItemGroup Label="Package Versions used by this repository">
+                             <PackageReference Update="Antlr" Version="3.5.0.2" />
+                             <PackageReference Update="Azure.Core" Version="1.25.0" />
+                           </ItemGroup>
+                         </Project>
 
-  <ItemGroup Label=""Package Versions used by this repository"">
-    <PackageReference Update=""Antlr"" Version=""3.5.0.2"" />
-    <PackageReference Update=""Azure.Core"" Version=""1.25.0"" />
-  </ItemGroup>
-</Project>
-";
-            string expectedXml = @"<Project>
-  <PropertyGroup>
-    <!-- These are used to keep packages which should upgrade together consistent -->
-    <MSBuildPackagesVersion>17.5.0-preview-22555-01</MSBuildPackagesVersion>
-    <NugetPackagesVersion>6.3.1</NugetPackagesVersion>
-  </PropertyGroup>
+                         """;
+            string expectedXml = """
+                                 <Project>
+                                   <PropertyGroup>
+                                     <!-- These are used to keep packages which should upgrade together consistent -->
+                                     <MSBuildPackagesVersion>17.5.0-preview-22555-01</MSBuildPackagesVersion>
+                                     <NugetPackagesVersion>6.3.1</NugetPackagesVersion>
+                                   </PropertyGroup>
+                                 
+                                   <ItemGroup Label="Package Versions used by this repository">
+                                     <PackageVersion Include="Antlr" Version="3.5.0.2" />
+                                     <PackageVersion Include="Azure.Core" Version="1.25.0" />
+                                   </ItemGroup>
+                                 </Project>
 
-  <ItemGroup Label=""Package Versions used by this repository"">
-    <PackageVersion Include=""Antlr"" Version=""3.5.0.2"" />
-    <PackageVersion Include=""Azure.Core"" Version=""1.25.0"" />
-  </ItemGroup>
-</Project>
-";
+                                 """;
 
             var mockFS = new Mock<IFileSystem>();
 

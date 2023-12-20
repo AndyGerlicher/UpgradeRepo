@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -44,6 +45,26 @@ namespace UpgradeRepo
         {
             File.Move(path, newName);
             return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyCollection<string>> EnumerateFiles(IReadOnlyCollection<string> searchPatterns)
+        {
+            var files = new List<string>();
+            foreach (var pattern in searchPatterns)
+            {
+                files.AddRange(Directory.GetFiles(Environment.CurrentDirectory, pattern, SearchOption.AllDirectories));
+            }
+            return Task.FromResult((IReadOnlyCollection<string>)files.AsReadOnly());
+        }
+
+        public Task<IEnumerable<string>> GetFilesAsync(string path, string searchPattern)
+        {
+            return Task.FromResult(Directory.GetFiles(path, searchPattern, SearchOption.AllDirectories).AsEnumerable());
+        }
+
+        public Task<string[]> ReadAllLinesAsync(string path, Encoding encoding)
+        {
+            return File.ReadAllLinesAsync(path, encoding);
         }
     }
 }

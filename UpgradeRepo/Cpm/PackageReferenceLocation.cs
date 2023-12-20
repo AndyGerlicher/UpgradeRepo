@@ -3,6 +3,7 @@
 internal class PackageReferenceLocation
 {
     public Package Package { get; }
+
     public ProjectFile File { get; }
 
     public PackageReferenceLocation(Package package, ProjectFile file)

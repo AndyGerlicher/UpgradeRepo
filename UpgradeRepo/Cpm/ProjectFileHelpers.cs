@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using System.Text.RegularExpressions;
-using NuGet.Versioning;
 
 namespace UpgradeRepo.Cpm
 {
@@ -15,7 +14,7 @@ namespace UpgradeRepo.Cpm
             var name = match.Groups["name"].Value;
             var version = match.Groups["version"].Value;
 
-            return new Package(name, string.IsNullOrEmpty(version) ? null : new NuGetVersion(version));
+            return new Package(name, version);
         }
 
         public static bool LineContainsPackageReference(this string line)
@@ -33,13 +32,13 @@ namespace UpgradeRepo.Cpm
         {
             // <PackageReference Include="Package" Version="X"
             // Removes version or sets VersionOverride if higher than the central version
-            var package = ProjectFileHelpers.GetPackageFromLine(line);
+            var package = GetPackageFromLine(line);
             var newVersion = versionResolver(package);
             newVersion = string.IsNullOrEmpty(newVersion) ?
                 string.Empty :
                 $@" VersionOverride=""{newVersion}""";
 
-            var pattern = @" Version="".*""";
+            var pattern = @" Version=""[^""]*""";
             return Regex.Replace(line, pattern, newVersion, RegexOptions.IgnoreCase);
         }
 
@@ -50,21 +49,25 @@ namespace UpgradeRepo.Cpm
         /// <returns>MSBuild file XML</returns>
         public static string GeneratePackageProps(IEnumerable<Package> packages)
         {
-            const string emptyProjectTemplate = @"<Project>
-  <ItemGroup>
-{0}  </ItemGroup>
-</Project>
-";
-            const string packageVersionTemplate = @"    <PackageVersion Include=""{0}"" Version=""{1}"" />";
-            
+            const string EmptyProjectTemplate =
+                """
+                <Project>
+                  <ItemGroup>
+                {0}  </ItemGroup>
+                </Project>
+
+                """;
+
+            const string PackageVersionTemplate = @"    <PackageVersion Include=""{0}"" Version=""{1}"" />";
+
             StringBuilder sb = new();
 
             foreach (var package in packages)
             {
-                sb.AppendLine(string.Format(packageVersionTemplate, package.Name, package.Version));
+                sb.AppendLine(string.Format(PackageVersionTemplate, package.Name, package.VersionString));
             }
 
-            return string.Format(emptyProjectTemplate, sb);
+            return string.Format(EmptyProjectTemplate, sb);
         }
     }
 }

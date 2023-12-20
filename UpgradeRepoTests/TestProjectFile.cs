@@ -24,9 +24,9 @@ namespace UpgradeRepoTests
             File.Delete(FullPath);
         }
 
-        public static TestProjectFile CreateWithPackage(string name, string version)
+        public static TestProjectFile CreateWithPackage(string name, string version, string additionalMetadata = "")
         {
-            string contents = @$"<PackageReference Include=""{name}"" Version=""{version}"" />";
+            string contents = $"""<PackageReference Include="{name}" Version="{version}" {additionalMetadata}/>""";
             
             return new TestProjectFile(contents);
         }
@@ -36,9 +36,8 @@ namespace UpgradeRepoTests
             var sb = new StringBuilder();
             foreach (var item in packages)
             {
-                sb.AppendLine(@$"<PackageReference Include=""{item.Item1}"" Version=""{item.Item2}"" />");
+                sb.AppendLine($"""<PackageReference Include="{item.Item1}" Version="{item.Item2}" />""");
             }
-            
 
             return new TestProjectFile(sb.ToString());
         }

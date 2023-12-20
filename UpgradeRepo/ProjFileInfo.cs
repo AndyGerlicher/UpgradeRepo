@@ -4,28 +4,25 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Gardener.Core;
 
 namespace UpgradeRepo
 {
-    internal class ProjFileInfo : FileSystemInfo
+    internal class ProjFileInfo
     {
-        private readonly object _lockObject = new object();
-        private Encoding? _encoding = null;
+        private readonly object _lockObject = new();
+        private readonly IFileSystem _fileSystem;
+        private Encoding? _encoding;
         private bool _endsWithNewLine;
 
-        public ProjFileInfo(string path)
+        public ProjFileInfo(IFileSystem fileSystem, string path)
         {
-            this.FullPath = path;
-        }
-        public override void Delete()
-        {
-            throw new NotImplementedException();
+            _fileSystem = fileSystem;
+            FullName = path;
         }
 
-        public override bool Exists => File.Exists(FullPath);
+        public string FullName { get; set; }
 
-        public override string Name => base.FullName;
-        
         public Encoding Encoding
         {
             get
@@ -51,20 +48,16 @@ namespace UpgradeRepo
             {
                 if (_encoding == null)
                 {
-                    var (encoding, endsWithNewLine) = ReadFile(FullPath);
+                    var (encoding, endsWithNewLine) = ReadFileAsync(FullName).Result;
                     _encoding = encoding;
                     _endsWithNewLine = endsWithNewLine;
                 }
             }
         }
 
-        private (Encoding, bool) ReadFile(string path)
+        private async Task<(Encoding, bool)> ReadFileAsync(string path)
         {
-            if (path.Contains(@"Src\Extensions\ICMextension\Framework.IcM\Framework.IcM.csproj"))
-            {
-                Debugger.Break();
-            }
-            Byte[] bytes = File.ReadAllBytes(path);
+            Byte[] bytes = await _fileSystem.ReadAllBytesAsync(path);
             Encoding? encoding = null;
 
             // Test UTF8 with BOM. This check can easily be copied and adapted
@@ -104,9 +97,29 @@ namespace UpgradeRepo
             // fall back to default ANSI encoding.
             encoding ??= Encoding.GetEncoding(1252);
 
-            bool endsWithNewLine = bytes.EndsWith(encoding.GetBytes(Environment.NewLine));
+            bool endsWithNewLine = EndsWith(bytes, encoding.GetBytes(Environment.NewLine));
 
             return (encoding, endsWithNewLine);
+        }
+
+        private static bool EndsWith(byte[] lhs, byte[] rhs)
+        {
+            bool endsWith = false;
+
+            if (lhs.Length >= rhs.Length)
+            {
+                endsWith = true;
+                for (int i = 0; i < rhs.Length; i++)
+                {
+                    if (!lhs[lhs.Length - 1 - i]!.Equals(rhs[rhs.Length - 1 - i]))
+                    {
+                        endsWith = false;
+                        break;
+                    }
+                }
+            }
+
+            return endsWith;
         }
     }
 }

@@ -1,26 +1,23 @@
-﻿using System.Text;
+﻿using Gardener.Core;
+using System.Text;
 
 namespace UpgradeRepo.Cpm
 {
-    internal class ProjectFile
+    internal class ProjectFile(IFileSystem fileSystem, string file)
     {
-        private readonly ProjFileInfo _file;
+        private readonly ProjFileInfo _file = new(fileSystem, file);
         private readonly List<Package> _packages = new();
+        private readonly IFileSystem _fileSystem = fileSystem;
 
         public string FilePath => _file.FullName;
-
-        public ProjectFile(string file)
-        {
-            _file = new ProjFileInfo(file);
-        }
 
         /// <summary>
         /// Read the file for PackageReference
         /// </summary>
-        /// <returns></returns>
-        public void ReadPackages()
+        public async Task ReadPackagesAsync()
         {
-            foreach (var line in File.ReadAllLines(_file.FullName, _file.Encoding))
+            string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
+            foreach (var line in contents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
             {
                 if (line.LineContainsPackageReference())
                 {
@@ -32,14 +29,17 @@ namespace UpgradeRepo.Cpm
         /// <summary>
         /// Write out PackageVersion lines with no version (or override)
         /// </summary>
-        /// <returns></returns>
-        public void WritePackages(Func<Package, string> versionResolver)
+        public async Task WritePackagesAsync(Func<Package, string> versionResolver)
         {
             bool dirty = false;
-
             StringBuilder sb = new StringBuilder();
 
-            foreach (var line in File.ReadAllLines(_file.FullName, _file.Encoding))
+            string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
+
+            string? line;
+            using var sr = new StringReader(contents);
+
+            while ((line = await sr.ReadLineAsync()) != null)
             {
                 var line2 = line;
 
@@ -61,7 +61,7 @@ namespace UpgradeRepo.Cpm
                     length -= Environment.NewLine.Length;
                 }
 
-                File.WriteAllText(_file.FullName, sb.ToString(0, length), _file.Encoding);
+                await _fileSystem.WriteAllTextAsync(_file.FullName, sb.ToString(0, length));
             }
         }
 
@@ -69,7 +69,5 @@ namespace UpgradeRepo.Cpm
         {
             return _packages;
         }
-
-        
     }
 }

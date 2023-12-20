@@ -46,12 +46,20 @@ namespace UpgradeRepo
                     {
                         cpm.Path = Environment.CurrentDirectory;
                     }
-                    await RunAsync(new CpmUpgradePlugin(), cpm);
+                    else
+                    {
+                        Environment.CurrentDirectory = cpm.Path;
+                    }
+                    await RunAsync(new CpmUpgradePlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()), cpm);
                     break;
                 case LegacyCpvOptions legacyCpv:
                     if (string.IsNullOrEmpty(legacyCpv.Path))
                     {
                         legacyCpv.Path = Environment.CurrentDirectory;
+                    }
+                    else
+                    {
+                        Environment.CurrentDirectory = legacyCpv.Path;
                     }
                     await RunAsync(new LegacyCpvPlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()), legacyCpv);
                     break;
@@ -59,6 +67,10 @@ namespace UpgradeRepo
                     if (string.IsNullOrEmpty(rspOptions.Path))
                     {
                         rspOptions.Path = Environment.CurrentDirectory;
+                    }
+                    else
+                    {
+                        Environment.CurrentDirectory = rspOptions.Path;
                     }
                     await RunAsync(new AddRsp(), rspOptions);
                     break;
