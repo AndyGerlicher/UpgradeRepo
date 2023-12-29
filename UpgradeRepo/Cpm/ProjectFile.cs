@@ -1,5 +1,7 @@
 ﻿using Gardener.Core;
+using System.Data.SqlTypes;
 using System.Text;
+using System.Xml;
 
 namespace UpgradeRepo.Cpm
 {
@@ -17,13 +19,7 @@ namespace UpgradeRepo.Cpm
         public async Task ReadPackagesAsync()
         {
             string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
-            foreach (var line in contents.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
-            {
-                if (line.LineContainsPackageReference())
-                {
-                    _packages.Add(ProjectFileHelpers.GetPackageFromLine(line));
-                }
-            }
+            _packages.AddRange(await ProjectFileHelpers.GetPackagesAsync(contents));
         }
 
         /// <summary>
@@ -31,37 +27,16 @@ namespace UpgradeRepo.Cpm
         /// </summary>
         public async Task WritePackagesAsync(Func<Package, string> versionResolver)
         {
-            bool dirty = false;
-            StringBuilder sb = new StringBuilder();
-
             string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
+            var newContents = await ProjectFileHelpers.UpdateVersions(contents, versionResolver, _file.EndsWithNewLine);
 
-            string? line;
-            using var sr = new StringReader(contents);
-
-            while ((line = await sr.ReadLineAsync()) != null)
+            if (!contents.Equals(newContents, StringComparison.Ordinal))
             {
-                var line2 = line;
+                // Since we're editing the file pretty heavily, we should verify it's still valid xml.
+                var xmlDoc = new XmlDocument();
+                xmlDoc.LoadXml(newContents);
 
-                if (line.LineContainsPackageReference())
-                {
-                    line2 = ProjectFileHelpers.UpdateVersion(line, versionResolver);
-                    dirty = true;
-                }
-
-                sb.AppendLine(line2);
-            }
-
-            if (dirty)
-            {
-                var length = sb.Length;
-
-                if (!_file.EndsWithNewLine)
-                {
-                    length -= Environment.NewLine.Length;
-                }
-
-                await _fileSystem.WriteAllTextAsync(_file.FullName, sb.ToString(0, length));
+                await _fileSystem.WriteAllTextAsync(_file.FullName, newContents);
             }
         }
 

@@ -12,7 +12,7 @@ namespace UpgradeRepo.Cpm
 
         public PackageVersionType VersionType { get; }
 
-        public Package(string name, string version)
+        public Package(string? name, string? version)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
 
@@ -24,6 +24,11 @@ namespace UpgradeRepo.Cpm
             if (version.Contains('*'))
             {
                 VersionType = PackageVersionType.Wildcard;
+                VersionString = version;
+            }
+            else if (version.Contains('[') || version.Contains(']'))
+            {
+                VersionType = PackageVersionType.VersionRange;
                 VersionString = version;
             }
             else if (version.StartsWith("$(", StringComparison.OrdinalIgnoreCase))
@@ -56,19 +61,7 @@ namespace UpgradeRepo.Cpm
             // Compare by VersionType
             if (VersionType != other.VersionType)
             {
-                // Treat WildCard or MSBuildProperty as greater than NugetVersion
-                if (VersionType == PackageVersionType.NuGetVersion && (other.VersionType == PackageVersionType.Wildcard || other.VersionType == PackageVersionType.MSBuildProperty))
-                {
-                    return -1;
-                }
-
-                if ((VersionType == PackageVersionType.Wildcard || VersionType == PackageVersionType.MSBuildProperty) && other.VersionType == PackageVersionType.NuGetVersion)
-                {
-                    return 1;
-                }
-
-                // If both are either WildCard or MSBuildProperty, sort by name
-                return nameComparison;
+                return ((int)VersionType).CompareTo((int)other.VersionType);
             }
 
             // If both are NuGetVersion, then compare by Version string
@@ -101,8 +94,9 @@ namespace UpgradeRepo.Cpm
 
     internal enum PackageVersionType
     {
-        NuGetVersion,
-        Wildcard,
-        MSBuildProperty,
+        NuGetVersion = 1,
+        Wildcard = 2,
+        VersionRange = 3,
+        MSBuildProperty = 4,
     }
 }
