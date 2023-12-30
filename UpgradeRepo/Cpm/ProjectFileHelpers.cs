@@ -7,26 +7,18 @@ namespace UpgradeRepo.Cpm
 {
     internal static class ProjectFileHelpers
     {
-        private const string PackageReferenceSingleLinePattern =
-            @"<PackageReference\s+(?:[^>]*?\s+)?Include=""(?<name>[^""]+)""(?:[^>]*?\s+Version=""(?<version>[^""]+)"")?.*?/>";
-
         private const string PackageReferenceVersionPattern = " Version=\"[^\"]*\"";
         private const string PackageRefStartPattern = @"<PackageReference\s+Include=""(?<name>[^""]+)""";
         private const string VersionAttrPattern = @"Version=""(?<version>[^""]+)""";
         private const string VersionTagPattern = "<Version>(?<version>[^<]+)</Version>";
         private const string PackageReferenceCloseTagPattern = "</PackageReference>";
         private const string PackageReferenceClosedPattern = "<PackageReference[^>]*\\/>";
-        private const string PackageReferenceStartTagPattern = @"<PackageReference\s+(?:[^>]*?\s+)?Include=""(?<name>[^""]+)"">";
 
         private static readonly Regex PackageRefStartRegex = new Regex(PackageRefStartPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex VersionAttrRegex = new Regex(VersionAttrPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex VersionTagRegex = new Regex(VersionTagPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PackageReferenceCloseTagRegex = new Regex(PackageReferenceCloseTagPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PackageReferenceClosedRegex = new Regex(PackageReferenceClosedPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PackageReferenceStartTagRegex = new Regex(PackageReferenceStartTagPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-        private static readonly Regex PackageReferenceSingleLineRegex =
-            new Regex(PackageReferenceSingleLinePattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private static readonly Regex PackageReferenceVersionRegex =
             new Regex(PackageReferenceVersionPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -37,8 +29,7 @@ namespace UpgradeRepo.Cpm
 
             bool isWithinPackageRef = false;
             string? packageName = null;
-            bool skippingCurrent = false;
-            
+
             using var sr = new StringReader(contents);
             while (await sr.ReadLineAsync() is { } line)
             {
@@ -53,8 +44,6 @@ namespace UpgradeRepo.Cpm
                         // This was a start of a PackageReference, but not all of it!
                         isWithinPackageRef = true;
                     }
-
-                    skippingCurrent = false;
 
                     var versionMatch = VersionAttrRegex.Match(line);
                     if (versionMatch.Success)
@@ -85,15 +74,16 @@ namespace UpgradeRepo.Cpm
             return packageReferences;
         }
 
-        public static async Task<string> UpdateVersions(string fileContent, Func<Package, string> versionResolver, bool endsWithNewLine)
+        public static async Task<(string? NewFileContents, bool IsDirty)> UpdateVersionsAsync(string fileContent, ProjFileInfo fileInfo, Func<Package, string> versionResolver)
         {
-            string lineEnding = fileContent.DetermineLineEnding();
+            bool dirty = false;
+            string lineEnding = fileInfo.LineEndings;
             var sb = new StringBuilder();
 
             bool isWithinPackageRef = false;
             string? packageName = null;
             bool skippingCurrent = false;
-            var seenPackages = new HashSet<string>();
+            var seenPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             using var sr = new StringReader(fileContent);
             while (await sr.ReadLineAsync() is { } line)
@@ -110,14 +100,13 @@ namespace UpgradeRepo.Cpm
                         isWithinPackageRef = true;
                     }
 
-                    if (seenPackages.Contains(packageName))
+                    if (!seenPackages.Add(packageName))
                     {
                         // Skip adding this line if the package is already processed
                         skippingCurrent = true;
                         continue;
                     }
 
-                    seenPackages.Add(packageName);
                     skippingCurrent = false;
 
                     var versionMatch = VersionAttrRegex.Match(line);
@@ -126,20 +115,25 @@ namespace UpgradeRepo.Cpm
                         currentVersion = versionMatch.Groups["version"].Value;
                         string newVersion = versionResolver(new Package(packageName, currentVersion));
 
-                        newVersion = string.IsNullOrEmpty(newVersion) ?
-                            string.Empty :
-                            $@" VersionOverride=""{newVersion}""";
+                        newVersion = string.IsNullOrEmpty(newVersion)
+                            ? string.Empty
+                            : $@" VersionOverride=""{newVersion}""";
 
                         var updatedLine = PackageReferenceVersionRegex.Replace(line, newVersion);
                         sb.Append(updatedLine);
                         sb.Append(lineEnding);
+                        dirty = true;
                         continue;
                     }
                 }
 
                 if (PackageReferenceCloseTagRegex.Match(line).Success)
                 {
-                    if (!skippingCurrent)
+                    if (skippingCurrent)
+                    {
+                        dirty = true;
+                    }
+                    else
                     {
                         sb.Append(line);
                         sb.Append(lineEnding);
@@ -160,7 +154,7 @@ namespace UpgradeRepo.Cpm
 
                         newVersion = string.IsNullOrEmpty(newVersion)
                             ? string.Empty
-                            : $@"<VersionOverride>{newVersion}</VersionOverride>""";
+                            : $@"<VersionOverride>{newVersion}</VersionOverride>";
 
                         var updatedLine = VersionTagRegex.Replace(line, newVersion);
                         if (!string.IsNullOrWhiteSpace(updatedLine))
@@ -169,6 +163,7 @@ namespace UpgradeRepo.Cpm
                             sb.Append(lineEnding);
                         }
 
+                        dirty = true;
                         continue;
                     }
                 }
@@ -178,12 +173,24 @@ namespace UpgradeRepo.Cpm
             }
 
             var length = sb.Length;
-            if (!endsWithNewLine)
+
+            // When the file doesn't end in new line, remove the one we just added
+            if (!fileInfo.EndsWithNewLine)
             {
-                length -= lineEnding.Length;
+                length = sb.Length - lineEnding.Length;
             }
 
-            return sb.ToString(0, length);
+            return dirty ?
+                (RemoveEmptyPackageRefTags(sb.ToString(0, length)), dirty) :
+                (null, false);
+        }
+
+        private static string? RemoveEmptyPackageRefTags(string fileContents)
+        {
+            string pattern = "<PackageReference ([^>]+)\\s*>\\s*</PackageReference>";
+            string replacement = "<PackageReference $1/>";
+
+            return Regex.Replace(fileContents, pattern, replacement);
         }
 
         /// <summary>

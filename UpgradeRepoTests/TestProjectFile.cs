@@ -65,6 +65,20 @@ namespace UpgradeRepoTests
             return GetRepo(sb.ToString());
         }
 
+        public static TestFileSystem GetRepoMultipleFiles(List<string> projFileContents, string? dbPropsContents = null)
+        {
+            var testFs = new TestFileSystem();
+            for (int i = 0; i < projFileContents.Count; i++)
+            {
+                var filePath = $"projfile{i}.csproj";
+
+                testFs.WriteAllTextAsync(filePath, projFileContents[i]);
+            }
+
+            return testFs;
+
+        }
+
         public static TestFileSystem GetRepo(string projFileContents, string? dbPropsContents = null)
         {
             var filePath = "projfile1.csproj";

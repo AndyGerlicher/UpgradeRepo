@@ -1,15 +1,16 @@
 ﻿using Gardener.Core;
-using System.Data.SqlTypes;
-using System.Text;
+using Microsoft.Extensions.Logging;
 using System.Xml;
 
 namespace UpgradeRepo.Cpm
 {
-    internal class ProjectFile(IFileSystem fileSystem, string file)
+    internal class ProjectFile(IFileSystem fileSystem, ILogger logger, string file)
     {
         private readonly ProjFileInfo _file = new(fileSystem, file);
         private readonly List<Package> _packages = new();
         private readonly IFileSystem _fileSystem = fileSystem;
+        private readonly ILogger _logger = logger;
+        private string? _fileContents;
 
         public string FilePath => _file.FullName;
 
@@ -18,8 +19,19 @@ namespace UpgradeRepo.Cpm
         /// </summary>
         public async Task ReadPackagesAsync()
         {
-            string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
-            _packages.AddRange(await ProjectFileHelpers.GetPackagesAsync(contents));
+            _fileContents = await _fileSystem.ReadAllTextAsync(_file.FullName);
+
+            try
+            {
+                var xmlDoc = new XmlDocument();
+                xmlDoc.LoadXml(_fileContents);
+                _packages.AddRange(await ProjectFileHelpers.GetPackagesAsync(_fileContents!));
+            }
+            catch (XmlException e)
+            {
+                _logger.LogWarning($"Invalid proj file! File: {file}, Error: {e.Message}");
+                _fileContents = null;
+            }
         }
 
         /// <summary>
@@ -27,12 +39,16 @@ namespace UpgradeRepo.Cpm
         /// </summary>
         public async Task WritePackagesAsync(Func<Package, string> versionResolver)
         {
-            string contents = await _fileSystem.ReadAllTextAsync(_file.FullName);
-            var newContents = await ProjectFileHelpers.UpdateVersions(contents, versionResolver, _file.EndsWithNewLine);
-
-            if (!contents.Equals(newContents, StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(_fileContents))
             {
-                // Since we're editing the file pretty heavily, we should verify it's still valid xml.
+                return;
+            }
+
+            (string? newContents, bool dirty) = await ProjectFileHelpers.UpdateVersionsAsync(_fileContents, _file, versionResolver);
+
+            if (dirty && !string.IsNullOrEmpty(newContents))
+            {
+                // Since we're editing the file pretty heavily, we should verify it's still valid xml and throw XmlException if not.
                 var xmlDoc = new XmlDocument();
                 xmlDoc.LoadXml(newContents);
 

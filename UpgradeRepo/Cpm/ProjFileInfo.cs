@@ -1,62 +1,32 @@
 ﻿using Gardener.Core;
+using Microsoft.VisualBasic;
 using System.Text;
 
 namespace UpgradeRepo
 {
     internal class ProjFileInfo
     {
-        private readonly object _lockObject = new();
         private readonly IFileSystem _fileSystem;
-        private Encoding? _encoding;
-        private bool _endsWithNewLine;
+
+        public string FullName { get; set; }
+
+        public bool EndsWithNewLine { get; private set; }
+
+        public string LineEndings { get; private set; }
 
         public ProjFileInfo(IFileSystem fileSystem, string path)
         {
             _fileSystem = fileSystem;
             FullName = path;
+
+            var contents = ReadFileAsync(FullName).Result;
+            LineEndings = contents.DetermineLineEnding();
         }
 
-        public string FullName { get; set; }
-
-        public Encoding Encoding
-        {
-            get
-            {
-                EnsureReadFile();
-                return _encoding!;
-            }
-        }
-
-        public bool EndsWithNewLine
-        {
-            get
-            {
-                EnsureReadFile();
-                return _endsWithNewLine;
-            }
-        }
-
-        private void EnsureReadFile()
-        {
-            if (_encoding != null)
-            {
-                return;
-            }
-
-            lock (_lockObject)
-            {
-                if (_encoding == null)
-                {
-                    var (encoding, endsWithNewLine) = ReadFileAsync(FullName).Result;
-                    _encoding = encoding;
-                    _endsWithNewLine = endsWithNewLine;
-                }
-            }
-        }
-
-        private async Task<(Encoding Encoding, bool EndsWithNewLine)> ReadFileAsync(string path)
+        private async Task<string> ReadFileAsync(string path)
         {
             byte[] bytes = await _fileSystem.ReadAllBytesAsync(path);
+            string contents = null!;
             Encoding? encoding = null;
 
             // Test UTF8 with BOM. This check can easily be copied and adapted
@@ -72,25 +42,22 @@ namespace UpgradeRepo
                 {
                     // Seems that despite being an encoding with preamble,
                     // it doesn't actually skip said preamble when decoding...
-                    encUtf8Bom.GetString(bytes, prLen, bytes.Length - prLen);
+                    contents = encUtf8Bom.GetString(bytes, prLen, bytes.Length - prLen);
                     encoding = encUtf8Bom;
                 }
                 catch (ArgumentException)
                 {
                     // Confirmed as not UTF-8!
-                    couldBeUtf8 = false;
                 }
             }
-
-            // use boolean to skip this if it's already confirmed as incorrect UTF-8 decoding.
-            if (couldBeUtf8 && encoding == null)
+            else if (couldBeUtf8 && encoding == null)
             {
                 // test UTF-8 on strict encoding rules. Note that on pure ASCII this will
                 // succeed as well, since valid ASCII is automatically valid UTF-8.
                 UTF8Encoding encUtf8NoBom = new UTF8Encoding(false, true);
                 try
                 {
-                    encUtf8NoBom.GetString(bytes);
+                    contents = encUtf8NoBom.GetString(bytes);
                     encoding = encUtf8NoBom;
                 }
                 catch (ArgumentException)
@@ -98,17 +65,18 @@ namespace UpgradeRepo
                     // Confirmed as not UTF-8!
                 }
             }
-
-            // fall back to default ANSI encoding.
-            if (encoding == null)
+            else
             {
+                // fall back to default ANSI encoding.
                 encoding = Encoding.GetEncoding(1252);
-                encoding.GetString(bytes);
+                contents = encoding.GetString(bytes);
+                LineEndings = contents.DetermineLineEnding();
             }
 
-            bool endsWithNewLine = bytes.AsSpan().EndsWith(encoding.GetBytes(Environment.NewLine));
+            EndsWithNewLine = bytes.AsSpan().EndsWith(encoding!.GetBytes("\r")) ||
+                              bytes.AsSpan().EndsWith(encoding!.GetBytes("\r\n"));
 
-            return (encoding, endsWithNewLine);
+            return contents;
         }
     }
 }

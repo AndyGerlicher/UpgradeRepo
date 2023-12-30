@@ -46,9 +46,13 @@ namespace UpgradeRepo.Cpm
 
         public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
         {
-            _fileSystem = fileSystem;
+            var files = await _fileSystem.EnumerateFiles(new[] { "*.??proj", "*.???proj", "*.proj", "*.targets", "*.props" });
 
-            var files = await _fileSystem.EnumerateFiles(new[] { "*.*proj", "*.targets", "*.props" });
+            if (!files.Any())
+            {
+                _logger.LogInformation("No PackageReferences detected.");
+                return false;
+            }
 
             foreach (var file in files)
             {
@@ -123,7 +127,13 @@ namespace UpgradeRepo.Cpm
 
         public void AddFile(string file)
         {
-            _files.Add(new ProjectFile(_fileSystem, file));
+            if ((file.EndsWith("proj", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".targets", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".props", StringComparison.OrdinalIgnoreCase)) &&
+                !file.EndsWith(".vdproj", StringComparison.OrdinalIgnoreCase))
+            {
+                _files.Add(new ProjectFile(_fileSystem, _logger, file));
+            }
         }
 
         public async Task ReadAllPackagesAsync()

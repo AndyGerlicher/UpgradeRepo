@@ -317,6 +317,57 @@ namespace UpgradeRepoTests
         }
 
         [Fact]
+        public async Task PackageVersionsSpansMultipleLinesWithVersionOverrideTest()
+        {
+            var contents =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                    <Version>5.0.0-beta.3</Version>
+                    <IncludeAssets>all</IncludeAssets>
+                </PackageReference>
+                """;
+
+            var contents2 =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" >
+                    <Version>6.0</Version>
+                    <IncludeAssets>all</IncludeAssets>
+                </PackageReference>
+                """;
+
+            var fs = TestProjectFile.GetRepoMultipleFiles([contents, contents2]);
+
+            var vpvm = new CpmUpgradePlugin(fs, new LoggerFactory().CreateLogger<CpmUpgradePlugin>());
+            await vpvm.ApplyAsync(null, fs);
+            var packages = vpvm.GetPackages().ToList();
+            vpvm.GetPackages().Count().ShouldBe(2);
+
+            fs.Files["projfile0.csproj"].ShouldBe("""
+                                                  <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                                                      <VersionOverride>5.0.0-beta.3</VersionOverride>
+                                                      <IncludeAssets>all</IncludeAssets>
+                                                  </PackageReference>
+                                                  """);
+
+            fs.Files["projfile1.csproj"].ShouldBe("""
+                                                  <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" >
+                                                      <IncludeAssets>all</IncludeAssets>
+                                                  </PackageReference>
+                                                  """);
+
+            
+
+            fs.Files[CpmUpgradePlugin.DirectoryPackagesProps].ShouldBe("""
+                                                                       <Project>
+                                                                         <ItemGroup>
+                                                                           <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="6.0" />
+                                                                         </ItemGroup>
+                                                                       </Project>
+
+                                                                       """);
+        }
+
+        [Fact]
         public async Task PackageVersionsSpansMultipleLinesVersionAsAttributeTest()
         {
             var contents = """
@@ -389,10 +440,116 @@ namespace UpgradeRepoTests
             var fs = TestProjectFile.CreateProjectFile(contents);
 
             var vpvm = new CpmUpgradePlugin(fs, new LoggerFactory().CreateLogger<CpmUpgradePlugin>());
-            await Should.ThrowAsync<XmlException>(async () =>
-            {
-                await vpvm.ApplyAsync(null!, fs);
-            });
+            await vpvm.ApplyAsync(null!, fs);
+            var packages = vpvm.GetPackages().ToList();
+
+            packages.Count.ShouldBe(0);
+        }
+
+        [Fact]
+        public async Task RemoveUnnecessaryPackageReferenceOpenCloseTags()
+        {
+            var contents =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                    <Version>5.0.0-beta.3</Version>
+                </PackageReference>
+                """;
+
+            var contents2 =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" >
+                    <Version>6.0</Version>
+                </PackageReference>
+                """;
+
+            var fs = TestProjectFile.GetRepoMultipleFiles([contents, contents2]);
+
+            var vpvm = new CpmUpgradePlugin(fs, new LoggerFactory().CreateLogger<CpmUpgradePlugin>());
+            await vpvm.ApplyAsync(null, fs);
+            var packages = vpvm.GetPackages().ToList();
+            vpvm.GetPackages().Count().ShouldBe(2);
+
+            fs.Files["projfile0.csproj"].ShouldBe("""
+                                                  <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                                                      <VersionOverride>5.0.0-beta.3</VersionOverride>
+                                                  </PackageReference>
+                                                  """);
+
+            fs.Files["projfile1.csproj"].ShouldBe("""
+                                                  <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" />
+                                                  """);
+
+
+
+            fs.Files[CpmUpgradePlugin.DirectoryPackagesProps].ShouldBe("""
+                                                                       <Project>
+                                                                         <ItemGroup>
+                                                                           <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="6.0" />
+                                                                         </ItemGroup>
+                                                                       </Project>
+
+                                                                       """);
+        }
+
+        [Fact]
+        public async Task EnsureEofNewLineBehavior()
+        {
+            var contents0 =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                    <Version>5.0.0-beta.3</Version>
+                </PackageReference>
+                
+                
+                """;
+
+            var contents1 =
+                """
+                <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" >
+                    <Version>6.0</Version>
+                </PackageReference>
+                
+                """;
+
+
+            var expected0 = """
+                            <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus">
+                                <VersionOverride>5.0.0-beta.3</VersionOverride>
+                            </PackageReference>
+
+
+                            """;
+
+            var expected1 = """
+                            <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" />
+
+                            """;
+
+            contents0.ReplaceLineEndings("\r");
+            contents1.ReplaceLineEndings("\r\n");
+
+            expected0.ReplaceLineEndings("\r");
+            expected1.ReplaceLineEndings("\r\n");
+
+            var fs = TestProjectFile.GetRepoMultipleFiles([contents0, contents1]);
+
+            var vpvm = new CpmUpgradePlugin(fs, new LoggerFactory().CreateLogger<CpmUpgradePlugin>());
+            await vpvm.ApplyAsync(null, fs);
+            var packages = vpvm.GetPackages().ToList();
+            vpvm.GetPackages().Count().ShouldBe(2);
+
+            fs.Files["projfile0.csproj"].ShouldBe(expected0);
+            fs.Files["projfile1.csproj"].ShouldBe(expected1);
+
+            fs.Files[CpmUpgradePlugin.DirectoryPackagesProps].ShouldBe("""
+                                                                       <Project>
+                                                                         <ItemGroup>
+                                                                           <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="6.0" />
+                                                                         </ItemGroup>
+                                                                       </Project>
+
+                                                                       """);
         }
     }
 }
