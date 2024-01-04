@@ -13,15 +13,16 @@ namespace UpgradeRepo.Cpm
         private const string VersionTagPattern = "<Version>(?<version>[^<]+)</Version>";
         private const string PackageReferenceCloseTagPattern = "</PackageReference>";
         private const string PackageReferenceClosedPattern = "<PackageReference[^>]*\\/>";
+        private const string EmptyPackageReferencePattern = """<PackageReference ([^>]+)\s*>\s*</PackageReference>""";
+        private const string EmptyPackageReferenceReplacement = "<PackageReference $1/>";
 
         private static readonly Regex PackageRefStartRegex = new Regex(PackageRefStartPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex VersionAttrRegex = new Regex(VersionAttrPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex VersionTagRegex = new Regex(VersionTagPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PackageReferenceCloseTagRegex = new Regex(PackageReferenceCloseTagPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PackageReferenceClosedRegex = new Regex(PackageReferenceClosedPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-        private static readonly Regex PackageReferenceVersionRegex =
-            new Regex(PackageReferenceVersionPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PackageReferenceVersionRegex = new Regex(PackageReferenceVersionPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex EmptyPackageReferenceRegex = new Regex(EmptyPackageReferencePattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static async Task<List<Package>> GetPackagesAsync(string contents)
         {
@@ -187,10 +188,7 @@ namespace UpgradeRepo.Cpm
 
         private static string? RemoveEmptyPackageRefTags(string fileContents)
         {
-            string pattern = "<PackageReference ([^>]+)\\s*>\\s*</PackageReference>";
-            string replacement = "<PackageReference $1/>";
-
-            return Regex.Replace(fileContents, pattern, replacement);
+            return EmptyPackageReferenceRegex.Replace(fileContents, EmptyPackageReferenceReplacement);
         }
 
         /// <summary>
