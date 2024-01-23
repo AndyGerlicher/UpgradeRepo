@@ -1,6 +1,7 @@
 ﻿using CommandLine;
 using Gardener.Core;
 using System.Reflection;
+using Gardener.Core.Packaging;
 using Microsoft.Extensions.Logging;
 using NLog.Config;
 using NLog.Targets;
@@ -50,7 +51,8 @@ namespace UpgradeRepo
                     {
                         Environment.CurrentDirectory = cpm.Path;
                     }
-                    await RunAsync(new CpmUpgradePlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()), cpm);
+
+                    await RunAsync(new CpmUpgradePlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>(), null));
                     break;
                 case LegacyCpvOptions legacyCpv:
                     if (string.IsNullOrEmpty(legacyCpv.Path))
@@ -61,7 +63,7 @@ namespace UpgradeRepo
                     {
                         Environment.CurrentDirectory = legacyCpv.Path;
                     }
-                    await RunAsync(new LegacyCpvPlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()), legacyCpv);
+                    await RunAsync(new LegacyCpvPlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()));
                     break;
                 case BuildRspOptions rspOptions:
                     if (string.IsNullOrEmpty(rspOptions.Path))
@@ -79,13 +81,15 @@ namespace UpgradeRepo
 
         private static async Task RunAsync(IUpgradePlugin plugin, ICommandLineOptions options)
         {
-            if (!await plugin.CanApplyAsync(options, _fileSystem))
+            var context = new OperateContext(_fileSystem, options);
+
+            if (!await plugin.CanApplyAsync(context))
             {
                 Console.WriteLine($"{options.Path} does not apply to {plugin}");
                 Environment.Exit(1);
             }
 
-            await plugin.ApplyAsync(options, _fileSystem);
+            await plugin.ApplyAsync(context);
         }
 
         private static void HandleErrors(IEnumerable<Error> obj)
@@ -128,21 +132,25 @@ namespace UpgradeRepo
     }
 
     [Verb("cpm", HelpText = "Onboard to CPM")]
-    public class CpmOptions : ICommandLineOptions
+    internal class CpmOptions : ICommandLineOptions
     {
         public string Path { get; set; } = Environment.CurrentDirectory;
     }
 
     [Verb("legacycpv", HelpText = "Upgrade Legacy CPV to Retail")]
-    public class LegacyCpvOptions : ICommandLineOptions
+    internal class LegacyCpvOptions : ICommandLineOptions
     {
         public string Path { get; set; } = Environment.CurrentDirectory;
     }
     
     [Verb("rsp", HelpText = "Add default Directory.Build.rsp")]
-    public class BuildRspOptions : ICommandLineOptions
+    internal class BuildRspOptions : ICommandLineOptions
     {
         public string Path { get; set; } = Environment.CurrentDirectory;
     }
+
+    internal readonly record struct OperateContext(
+        IFileSystem FileSystem,
+        ICommandLineOptions Options);
 }
 

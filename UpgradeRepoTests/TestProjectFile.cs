@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Gardener.Core;
@@ -171,16 +172,27 @@ namespace UpgradeRepoTests
 
         public Task<IReadOnlyCollection<string>> EnumerateFiles(IReadOnlyCollection<string> searchPatterns)
         {
-            var files = new List<string>();
-            foreach (var kvp in Files)
+            var items = Files.Keys;
+            var result = new List<string>();
+            static string ConvertSearchPatternToRegex(string searchPattern)
             {
-                if (kvp.Key.Contains("csproj"))
+                string regex = searchPattern.Replace(".", "\\.").Replace("*", ".*").Replace("?", ".");
+                return $"^{regex}$";
+            }
+
+            var regex = new Regex(ConvertSearchPatternToRegex(string.Join("|", searchPatterns)), RegexOptions.Compiled);
+            if (items != null)
+            {
+                foreach (var item in items)
                 {
-                    files.Add(kvp.Key);
+                    if (regex.IsMatch(item))
+                    {
+                        result.Add(item);
+                    }
                 }
             }
 
-            return Task.FromResult((IReadOnlyCollection<string>)files);
+            return Task.FromResult((IReadOnlyCollection<string>)result.AsReadOnly());
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Gardener.Core;
 
@@ -49,12 +50,27 @@ namespace UpgradeRepo
 
         public Task<IReadOnlyCollection<string>> EnumerateFiles(IReadOnlyCollection<string> searchPatterns)
         {
-            var files = new List<string>();
-            foreach (var pattern in searchPatterns)
+            var items = Directory.GetFiles(Environment.CurrentDirectory, "*.*", SearchOption.AllDirectories);
+            var result = new List<string>();
+            static string ConvertSearchPatternToRegex(string searchPattern)
             {
-                files.AddRange(Directory.GetFiles(Environment.CurrentDirectory, pattern, SearchOption.AllDirectories));
+                string regex = searchPattern.Replace(".", "\\.").Replace("*", ".*").Replace("?", ".");
+                return $"^{regex}$";
             }
-            return Task.FromResult((IReadOnlyCollection<string>)files.AsReadOnly());
+
+            var regex = new Regex(ConvertSearchPatternToRegex(string.Join("|", searchPatterns)), RegexOptions.Compiled);
+            if (items != null)
+            {
+                foreach (var item in items)
+                {
+                    if (regex.IsMatch(item))
+                    {
+                        result.Add(item);
+                    }
+                }
+            }
+
+            return Task.FromResult((IReadOnlyCollection<string>)result.AsReadOnly());
         }
 
         public Task<IEnumerable<string>> GetFilesAsync(string path, string searchPattern)

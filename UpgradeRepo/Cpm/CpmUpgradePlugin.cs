@@ -1,7 +1,11 @@
 ﻿using Gardener.Core;
 using Gardener.Core.MSBuild;
+using Gardener.Core.Packaging;
 using Microsoft.Extensions.Logging;
+using NuGet.Versioning;
 using System.Collections.Concurrent;
+using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace UpgradeRepo.Cpm
@@ -11,22 +15,22 @@ namespace UpgradeRepo.Cpm
         internal const string DirectoryPackagesProps = "Directory.Packages.props";
         internal const string DirectoryBuildProps = "Directory.Build.props";
         private readonly ConcurrentDictionary<string, ConcurrentBag<PackageReferenceLocation>> _packageMap = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, ConcurrentBag<Package>> _supplementalPackages = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentBag<ProjectFile> _files = new();
-        private IFileSystem _fileSystem;
-        private ILogger _logger;
+        private readonly ILogger _logger;
+        private readonly IPackageVersionRepository? _packageVersionRepository;
+        private IFileSystem? _fileSystem;
+        private List<AzureArtifactsFeed>? _artifactsFeedsCache;
 
-        public CpmUpgradePlugin(ILogger logger) : this(new FileSystem(), logger)
-        { }
-
-        public CpmUpgradePlugin(IFileSystem fileSystem, ILogger logger)
+        public CpmUpgradePlugin(ILogger logger, IPackageVersionRepository? packageVersionRepository)
         {
-            _fileSystem = fileSystem;
             _logger = logger;
+            _packageVersionRepository = packageVersionRepository;
         }
 
-        public async Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public async Task<bool> CanApplyAsync(OperateContext context)
         {
-			_fileSystem = fileSystem;
+            _fileSystem = context.FileSystem;
             string dpPropsContent = await _fileSystem.FileExistsAsync(DirectoryBuildProps)
                 ? (await MSBuildFile.ReadAsync(_fileSystem, DirectoryBuildProps)).Content
                 : string.Empty;
@@ -44,8 +48,9 @@ namespace UpgradeRepo.Cpm
             return !await _fileSystem.FileExistsAsync(DirectoryPackagesProps);
         }
 
-        public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public async Task<bool> ApplyAsync(OperateContext context)
         {
+            _fileSystem = context.FileSystem;
             var files = await _fileSystem.EnumerateFiles(new[] { "*.??proj", "*.???proj", "*.proj", "*.targets", "*.props" });
 
             if (!files.Any())
@@ -67,12 +72,19 @@ namespace UpgradeRepo.Cpm
                 return false;
             }
 
-            await WriteAllUpdatesAsync();
+            var wroteFiles = await WriteAllUpdatesAsync();
+
+            if (!wroteFiles)
+            {
+                _logger.LogInformation("No PackageReferences detected.");
+                return false;
+            }
+
             ShowConflicts();
 
             var lineEndingDirectoryBuildProps = await UpdateDirectoryBuildProps(_fileSystem, DirectoryBuildProps);
 
-            var packagePropsContent = GeneratePackageProps(lineEndingDirectoryBuildProps);
+            var packagePropsContent = await GeneratePackageProps(lineEndingDirectoryBuildProps);
 
             await _fileSystem.WriteAllTextAsync(DirectoryPackagesProps, packagePropsContent);
 
@@ -132,7 +144,7 @@ namespace UpgradeRepo.Cpm
                 file.EndsWith(".props", StringComparison.OrdinalIgnoreCase)) &&
                 !file.EndsWith(".vdproj", StringComparison.OrdinalIgnoreCase))
             {
-                _files.Add(new ProjectFile(_fileSystem, _logger, file));
+                _files.Add(new ProjectFile(_fileSystem!, _logger, file));
             }
         }
 
@@ -144,12 +156,15 @@ namespace UpgradeRepo.Cpm
             }
         }
 
-        public async Task WriteAllUpdatesAsync()
+        public async Task<bool> WriteAllUpdatesAsync()
         {
+            var wroteFiles = false;
             foreach (ProjectFile file in _files)
             {
-                await UpdateFileAsync(file);
+                wroteFiles = await file.WritePackagesAsync(ResolveVersion) || wroteFiles;
             }
+
+            return wroteFiles;
         }
 
         public void ShowConflicts()
@@ -177,6 +192,7 @@ namespace UpgradeRepo.Cpm
         {
             await file.ReadPackagesAsync();
             var packages = file.GetPackages();
+            var supplemental = file.GetSupplementalPackages();
 
             foreach (var package in packages)
             {
@@ -186,18 +202,134 @@ namespace UpgradeRepo.Cpm
 
                 locations.Add(new PackageReferenceLocation(package, file));
             }
+
+            foreach (var package in supplemental)
+            {
+                ConcurrentBag<Package> locations = _supplementalPackages.GetOrAdd(
+                    package.Name,
+                    _ => new ConcurrentBag<Package>());
+
+                locations.Add(package);
+            }
         }
 
-        private async Task UpdateFileAsync(ProjectFile file)
+        public async Task<string> GeneratePackageProps(string lineEnding)
         {
-            await file.WritePackagesAsync(ResolveVersion);
+            const string EmptyProjectTemplate =
+                """
+                <Project>
+                  <ItemGroup>
+                {0}  </ItemGroup>
+                </Project>
+
+                """;
+
+            const string PackageVersionTemplate = @"    <PackageVersion Include=""{0}"" Version=""{1}"" />{2}";
+
+            StringBuilder sb = new();
+            var packages = _packageMap
+                .Select(kvp => kvp.Value.Max(pkg => pkg.Package)!)
+                .OrderBy(pkg => pkg.Name);
+
+            foreach (var package in packages)
+            {
+                var version = await ResolveSpecialVersionCases(package);
+                sb.Append(string.Format(PackageVersionTemplate, package.Name, version, lineEnding));
+            }
+
+            return string.Format(EmptyProjectTemplate, sb);
         }
 
-        public string GeneratePackageProps(string lineEnding)
+        private async Task<string> ResolveSpecialVersionCases(Package package)
         {
-            var packages = _packageMap.Select(kvp => kvp.Value.Max(pkg => pkg.Package)!);
+            // If the only version we found for the package was "Unknown", it won't be valid here.
+            // In this case the repo probably specified it as an Update after the declaration.
+            // NOTE: This is somewhat risky as we don't know don't have the import graph. These could
+            // come from anywhere in the repo.
+            if (package.VersionType == PackageVersionType.Unknown)
+            {
+                package = ResolveUnknownPackage(package);
+            }
 
-            return ProjectFileHelpers.GeneratePackageProps(packages, lineEnding);
+            // We can't use a * version in D.P.props! Get the latest version.
+            if (package.VersionType == PackageVersionType.Wildcard)
+            {
+                package = await ResolveWildcardPackage(package);
+            }
+
+            if (package.VersionType == PackageVersionType.VersionRange && package.VersionString.Contains('*'))
+            {
+                // I guess this could be handled if we find a lot of these.
+                throw new InvalidOperationException($"Version Ranges with wildcards not allowed in Directory.Build.props! Could not resolve {package.Name} {package.VersionString}");
+            }
+
+            return package.VersionString;
+        }
+
+        private async Task<Package> ResolveWildcardPackage(Package package)
+        {
+            if (_packageVersionRepository != null && VersionRange.TryParse(package.VersionString, out VersionRange? versionRange))
+            {
+                foreach (var feed in await GetFeeds())
+                {
+                    NuGetVersion? bestMatch = await _packageVersionRepository.FindBestMatchPackageVersionAsync(feed, package.Name, versionRange, CancellationToken.None);
+                    var matchVersion = bestMatch?.ToString();
+                    if (!string.IsNullOrEmpty(matchVersion))
+                    {
+                        _logger.LogInformation($"Resolved package '{package.Name} from {package.VersionString} to {matchVersion}.");
+                        return new Package(package.Name, matchVersion);
+                    }
+                }
+            }
+
+            // Checking the feed failed, the result will be an invalid Directory.Packages.Props.
+            throw new InvalidOperationException($"* Version not allowed in Directory.Packages.Props! Could not resolve {package.Name} {package.VersionString}");
+        }
+
+        private Package ResolveUnknownPackage(Package package)
+        {
+            if (!_supplementalPackages.ContainsKey(package.Name))
+            {
+                throw new InvalidOperationException($"Unknown version specified: {package.Name} {package.VersionString}");
+            }
+
+            var supplemental = _supplementalPackages[package.Name].Max();
+            if (supplemental!.VersionType != PackageVersionType.Unknown)
+            {
+                // Replace with this version. It might still have a wildcard, so resolve it below
+                package = supplemental;
+            }
+
+            return package;
+        }
+
+        private async Task<List<AzureArtifactsFeed>> GetFeeds()
+        {
+            if (_artifactsFeedsCache == null)
+            {
+                _artifactsFeedsCache = new List<AzureArtifactsFeed>();
+                var nugetConfigs = await _fileSystem!.EnumerateFiles(new[] { "*nuget.config" });
+
+                if (nugetConfigs == null || !nugetConfigs.Any())
+                {
+                    throw new InvalidOperationException("* Version not allowed in Directory.Build.props! - No nuget.config");
+                }
+
+                // OrderBy so the shortest (root) will always be checked first.
+                foreach (var config in nugetConfigs.OrderBy(c => c.Length))
+                {
+                    string configFile = await _fileSystem.ReadAllTextAsync(config);
+                    _artifactsFeedsCache.AddRange(AzureArtifactsFeed.ParseNuGetConfig(configFile));
+                }
+
+                if (_artifactsFeedsCache.Count < 1)
+                {
+                    throw new InvalidOperationException(
+                        $"* Version not allowed in Directory.Build.props! - Feed count: {_artifactsFeedsCache.Count}");
+                }
+            }
+
+            return _artifactsFeedsCache;
         }
 
         /// <summary>

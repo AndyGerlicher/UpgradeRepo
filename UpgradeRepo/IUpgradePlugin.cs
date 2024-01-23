@@ -10,9 +10,9 @@ namespace UpgradeRepo
 {
     internal interface IUpgradePlugin
     {
-        Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem);
+        Task<bool> CanApplyAsync(OperateContext context);
 
-        Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem);
+        Task<bool> ApplyAsync(OperateContext context);
     }
 
     internal interface ICommandLineOptions

@@ -2,6 +2,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using Gardener.Core;
+using Gardener.Core.Packaging;
+using NuGet.Versioning;
 
 namespace UpgradeRepo.Cpm
 {
@@ -15,6 +17,8 @@ namespace UpgradeRepo.Cpm
         private const string PackageReferenceClosedPattern = "<PackageReference[^>]*\\/>";
         private const string EmptyPackageReferencePattern = """<PackageReference ([^>]+)\s*>\s*</PackageReference>""";
         private const string EmptyPackageReferenceReplacement = "<PackageReference $1/>";
+        private const string PackageReferenceUpdatePattern = """<PackageReference\s+Update="(?<name>[^"]+)"\s+(.*?)Version="(?<version>[^"]+)"([^/>]*)(\/?)>""";
+        private const string PackageReferenceUpdateReplacement = """<PackageReference Update="${name}" $1VersionOverride="${version}"$2$3>""";
 
         private static readonly Regex PackageRefStartRegex = new Regex(PackageRefStartPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex VersionAttrRegex = new Regex(VersionAttrPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -23,6 +27,7 @@ namespace UpgradeRepo.Cpm
         private static readonly Regex PackageReferenceClosedRegex = new Regex(PackageReferenceClosedPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PackageReferenceVersionRegex = new Regex(PackageReferenceVersionPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex EmptyPackageReferenceRegex = new Regex(EmptyPackageReferencePattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PackageReferenceUpdateRegex = new Regex(PackageReferenceUpdatePattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static async Task<List<Package>> GetPackagesAsync(string contents)
         {
@@ -181,42 +186,38 @@ namespace UpgradeRepo.Cpm
                 length = sb.Length - lineEnding.Length;
             }
 
-            return dirty ?
-                (RemoveEmptyPackageRefTags(sb.ToString(0, length)), dirty) :
-                (null, false);
-        }
+            var contents = sb.ToString(0, length);
+            contents = EmptyPackageReferenceRegex.Replace(contents, EmptyPackageReferenceReplacement);
 
-        private static string? RemoveEmptyPackageRefTags(string fileContents)
-        {
-            return EmptyPackageReferenceRegex.Replace(fileContents, EmptyPackageReferenceReplacement);
-        }
-
-        /// <summary>
-        /// Write out a Directory.Packages.props file
-        /// </summary>
-        /// <param name="packages">Set of packages/versions</param>
-        /// <returns>MSBuild file XML</returns>
-        public static string GeneratePackageProps(IEnumerable<Package> packages, string lineEnding)
-        {
-            const string EmptyProjectTemplate =
-                """
-                <Project>
-                  <ItemGroup>
-                {0}  </ItemGroup>
-                </Project>
-
-                """;
-
-            const string PackageVersionTemplate = @"    <PackageVersion Include=""{0}"" Version=""{1}"" />{2}";
-
-            StringBuilder sb = new();
-
-            foreach (var package in packages)
+            if (PackageReferenceUpdateRegex.IsMatch(contents))
             {
-                sb.Append(string.Format(PackageVersionTemplate, package.Name, package.VersionString, lineEnding));
+                dirty = true;
+                contents = PackageReferenceUpdateRegex.Replace(contents, PackageReferenceUpdateReplacement);
             }
 
-            return string.Format(EmptyProjectTemplate, sb);
+            return (contents, dirty);
+        }
+
+        public static List<Package> GetPackageUpdateVersions(string contents)
+        {
+            var packageReferences = new List<Package>();
+            var matches = PackageReferenceUpdateRegex.Matches(contents);
+            if (matches.Count > 0)
+            {
+                foreach (Match match in matches)
+                {
+                    var name = match.Groups["name"].Value;
+                    var version = match.Groups["version"].Value;
+
+                    var package = new Package(name, version);
+                    if (package.VersionType == PackageVersionType.NuGetVersion)
+                    {
+                        packageReferences.Add(package);
+                    }
+                }
+            }
+
+            return packageReferences;
         }
     }
 }

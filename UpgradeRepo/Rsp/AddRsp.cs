@@ -5,12 +5,12 @@ namespace UpgradeRepo.Rsp
     internal class AddRsp : IUpgradePlugin
     {
         private const string rspFileName = "Directory.Build.rsp";
-        public async Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public async Task<bool> CanApplyAsync(OperateContext context)
         {
-            return !await fileSystem.FileExistsAsync(Path.Combine(options.Path, rspFileName));
+            return !await context.FileSystem.FileExistsAsync(Path.Combine(context.Options.Path, rspFileName));
         }
 
-        public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public async Task<bool> ApplyAsync(OperateContext context)
         {
             string defaultContents = @"-ConsoleLoggerParameters:Verbosity=Minimal;Summary;ForceNoAlign
 -MaxCPUCount
@@ -21,9 +21,9 @@ namespace UpgradeRepo.Rsp
 -terminallogger
 ";
             
-            string rspFilePath = Path.Combine(options.Path, rspFileName);
+            string rspFilePath = Path.Combine(context.Options.Path, rspFileName);
             Console.WriteLine($"Writing {rspFilePath}");
-            await fileSystem.WriteAllTextAsync(rspFilePath, defaultContents);
+            await context.FileSystem.WriteAllTextAsync(rspFilePath, defaultContents);
 
             return true;
         }

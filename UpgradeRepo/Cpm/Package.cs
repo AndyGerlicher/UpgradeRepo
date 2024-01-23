@@ -31,16 +31,21 @@ namespace UpgradeRepo.Cpm
                 VersionType = PackageVersionType.VersionRange;
                 VersionString = version;
             }
-            else if (version.StartsWith("$(", StringComparison.OrdinalIgnoreCase))
+            else if (version.Contains("$(", StringComparison.OrdinalIgnoreCase))
             {
                 VersionType = PackageVersionType.MSBuildProperty;
                 VersionString = version;
             }
-            else
+            else if (NuGetVersion.TryParse(version, out var nugetVersion))
             {
                 VersionType = PackageVersionType.NuGetVersion;
-                NuGetVersion = new NuGetVersion(version);
+                NuGetVersion = nugetVersion;
                 VersionString = NuGetVersion.ToString();
+            }
+            else
+            {
+                VersionType = PackageVersionType.Unknown;
+                VersionString = version;
             }
         }
 
@@ -94,6 +99,7 @@ namespace UpgradeRepo.Cpm
 
     internal enum PackageVersionType
     {
+        Unknown = 0,
         NuGetVersion = 1,
         Wildcard = 2,
         VersionRange = 3,

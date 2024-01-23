@@ -50,7 +50,8 @@ namespace UpgradeRepo
                     // Confirmed as not UTF-8!
                 }
             }
-            else if (couldBeUtf8 && encoding == null)
+
+            if (couldBeUtf8 && encoding == null)
             {
                 // test UTF-8 on strict encoding rules. Note that on pure ASCII this will
                 // succeed as well, since valid ASCII is automatically valid UTF-8.
@@ -65,14 +66,27 @@ namespace UpgradeRepo
                     // Confirmed as not UTF-8!
                 }
             }
-            else
+
+            if (encoding == null)
             {
-                // fall back to default ANSI encoding.
-                encoding = Encoding.GetEncoding(1252);
-                contents = encoding.GetString(bytes);
-                LineEndings = contents.DetermineLineEnding();
+                try
+                {
+                    Encoding utf16 = Encoding.Unicode;
+                    contents = utf16.GetString(bytes);
+                    encoding = utf16;
+                }
+                catch (ArgumentException)
+                {
+                    // Confirmed as not UTF-16!
+                }
             }
 
+            if (encoding == null)
+            {
+                throw new InvalidOperationException("Unable to determine encoding type for {path}");
+            }
+
+            LineEndings = contents.DetermineLineEnding();
             EndsWithNewLine = bytes.AsSpan().EndsWith(encoding!.GetBytes("\r")) ||
                               bytes.AsSpan().EndsWith(encoding!.GetBytes("\r\n"));
 

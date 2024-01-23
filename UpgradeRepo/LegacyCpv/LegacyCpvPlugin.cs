@@ -5,6 +5,7 @@ using Gardener.Core.Json;
 using Gardener.Core.MSBuild;
 using System.Text;
 using System.Text.RegularExpressions;
+using Gardener.Core.Packaging;
 using Microsoft.Extensions.Logging;
 
 namespace UpgradeRepo.LegacyCpv
@@ -39,13 +40,14 @@ namespace UpgradeRepo.LegacyCpv
         {
             _logger = logger;
         }
-        public Task<bool> CanApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public Task<bool> CanApplyAsync(OperateContext context)
         {
-            return CheckRequiredFiles(fileSystem);
+            return CheckRequiredFiles(context.FileSystem);
         }
 
-        public async Task<bool> ApplyAsync(ICommandLineOptions options, IFileSystem fileSystem)
+        public async Task<bool> ApplyAsync(OperateContext context)
         {
+            var fileSystem = context.FileSystem;
             if (!await CheckRequiredFiles(fileSystem))
             {
                 return false;
