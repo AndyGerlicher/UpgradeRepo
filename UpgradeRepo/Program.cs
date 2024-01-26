@@ -52,7 +52,7 @@ namespace UpgradeRepo
                         Environment.CurrentDirectory = cpm.Path;
                     }
 
-                    await RunAsync(new CpmUpgradePlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>(), null));
+                    await RunPluginAsync(new CpmUpgradePlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>(), null), cpm);
                     break;
                 case LegacyCpvOptions legacyCpv:
                     if (string.IsNullOrEmpty(legacyCpv.Path))
@@ -63,7 +63,7 @@ namespace UpgradeRepo
                     {
                         Environment.CurrentDirectory = legacyCpv.Path;
                     }
-                    await RunAsync(new LegacyCpvPlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()));
+                    await RunPluginAsync(new LegacyCpvPlugin(_loggerFactory!.CreateLogger<LegacyCpvPlugin>()), legacyCpv);
                     break;
                 case BuildRspOptions rspOptions:
                     if (string.IsNullOrEmpty(rspOptions.Path))
@@ -74,12 +74,12 @@ namespace UpgradeRepo
                     {
                         Environment.CurrentDirectory = rspOptions.Path;
                     }
-                    await RunAsync(new AddRsp(), rspOptions);
+                    await RunPluginAsync(new AddRsp(), rspOptions);
                     break;
             }
         }
 
-        private static async Task RunAsync(IUpgradePlugin plugin, ICommandLineOptions options)
+        private static async Task RunPluginAsync(IUpgradePlugin plugin, ICommandLineOptions options)
         {
             var context = new OperateContext(_fileSystem, options);
 
