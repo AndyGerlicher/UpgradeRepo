@@ -4,7 +4,7 @@ Prototype tool to modify/upgrade a repo.
 Manage NuGet packages centrally. See [Central Package Management](https://learn.microsoft.com/en-us/nuget/consume-packages/Central-Package-Management) for details.
 
 Usage:
-* Run `RepoUpgrade cpv` at the root of your repo.
+* Run `RepoUpgrade cpm` at the root of your repo.
 * Check files for accuracy. If you have multiple versions specified, the minimum version will go into `Directory.Packages.props` and the leaf nodes will override.
 
 
