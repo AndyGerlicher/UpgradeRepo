@@ -43,7 +43,7 @@ namespace UpgradeRepo.Cpm
                 string? currentVersion = null;
                 if (packageRefMatch.Success)
                 {
-                    packageName = packageRefMatch.Groups["name"].Value;
+                    packageName = packageRefMatch.Groups["name"].Value.Trim();
 
                     if (!PackageReferenceClosedRegex.Match(line).Success)
                     {
@@ -54,7 +54,7 @@ namespace UpgradeRepo.Cpm
                     var versionMatch = VersionAttrRegex.Match(line);
                     if (versionMatch.Success)
                     {
-                        currentVersion = versionMatch.Groups["version"].Value;
+                        currentVersion = versionMatch.Groups["version"].Value.Trim();
                         packageReferences.Add(new Package(packageName, currentVersion));
                         continue;
                     }
@@ -71,7 +71,7 @@ namespace UpgradeRepo.Cpm
                     var versionMatch = VersionTagRegex.Match(line);
                     if (versionMatch.Success)
                     {
-                        currentVersion = versionMatch.Groups["version"].Value;
+                        currentVersion = versionMatch.Groups["version"].Value.Trim();
                         packageReferences.Add(new Package(packageName, currentVersion));
                     }
                 }
@@ -98,7 +98,7 @@ namespace UpgradeRepo.Cpm
                 string? currentVersion = null;
                 if (packageRefMatch.Success)
                 {
-                    packageName = packageRefMatch.Groups["name"].Value;
+                    packageName = packageRefMatch.Groups["name"].Value.Trim();
 
                     if (!PackageReferenceClosedRegex.Match(line).Success)
                     {
@@ -118,7 +118,7 @@ namespace UpgradeRepo.Cpm
                     var versionMatch = VersionAttrRegex.Match(line);
                     if (versionMatch.Success)
                     {
-                        currentVersion = versionMatch.Groups["version"].Value;
+                        currentVersion = versionMatch.Groups["version"].Value.Trim();
                         string newVersion = versionResolver(new Package(packageName, currentVersion));
 
                         newVersion = string.IsNullOrEmpty(newVersion)
@@ -155,7 +155,7 @@ namespace UpgradeRepo.Cpm
                     var versionMatch = VersionTagRegex.Match(line);
                     if (versionMatch.Success)
                     {
-                        currentVersion = versionMatch.Groups["version"].Value;
+                        currentVersion = versionMatch.Groups["version"].Value.Trim();
                         string newVersion = versionResolver(new Package(packageName, currentVersion));
 
                         newVersion = string.IsNullOrEmpty(newVersion)
@@ -206,8 +206,8 @@ namespace UpgradeRepo.Cpm
             {
                 foreach (Match match in matches)
                 {
-                    var name = match.Groups["name"].Value;
-                    var version = match.Groups["version"].Value;
+                    var name = match.Groups["name"].Value.Trim();
+                    var version = match.Groups["version"].Value.Trim();
 
                     var package = new Package(name, version);
                     if (package.VersionType == PackageVersionType.NuGetVersion)

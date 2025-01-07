@@ -28,6 +28,20 @@ namespace UpgradeRepoTests
         }
 
         [Fact]
+        public async Task GetNameVersionTrimTest()
+        {
+            string line = """<PackageReference Include=" Microsoft.Azure.WebJobs.Extensions.ServiceBus " Version=" 5.0.0-beta.3 " />""";
+            var fs = TestProjectFile.GetRepo(line);
+            var vpvm = new CpmUpgradePlugin(new LoggerFactory().CreateLogger<CpmUpgradePlugin>(), null);
+            await vpvm.ApplyAsync(new OperateContext(fs, null));
+
+            var packages = vpvm.GetPackages().ToList();
+            packages.Count.ShouldBe(1);
+            packages[0].Name.ShouldBe("Microsoft.Azure.WebJobs.Extensions.ServiceBus");
+            packages[0].VersionString.ShouldBe("5.0.0-beta.3");
+        }
+
+        [Fact]
         public async Task RemoveVersionTest()
         {
             string line = """<PackageReference Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="5.0.0-beta.3"/>""";
