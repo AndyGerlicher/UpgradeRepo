@@ -560,6 +560,31 @@ namespace UpgradeRepoTests
         }
 
         [Fact]
+        public async Task WeirdSpacingHandled()
+        {
+            var contents = """<PackageReference Include = "Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version = "5.0.0-beta.3" />""";
+
+            var fs = TestProjectFile.CreateProjectFile(contents);
+
+            var vpvm = new CpmUpgradePlugin(new LoggerFactory().CreateLogger<CpmUpgradePlugin>(), null);
+            await vpvm.ApplyAsync(new OperateContext(fs, null));
+            var packages = vpvm.GetPackages().ToList();
+
+            vpvm.GetPackages().Count().ShouldBe(1);
+
+            fs.Files.First().Value.ShouldBe("""<PackageReference Include = "Microsoft.Azure.WebJobs.Extensions.ServiceBus" />""");
+
+            fs.Files[CpmUpgradePlugin.DirectoryPackagesProps].ShouldBe("""
+                                                                       <Project>
+                                                                         <ItemGroup>
+                                                                           <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.ServiceBus" Version="5.0.0-beta.3" />
+                                                                         </ItemGroup>
+                                                                       </Project>
+
+                                                                       """);
+        }
+
+        [Fact]
         public async Task PackageRefUpdateHandled2()
         {
             var contents =
