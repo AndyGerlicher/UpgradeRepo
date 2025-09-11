@@ -9,15 +9,15 @@ namespace UpgradeRepo.Cpm
 {
     internal static class ProjectFileHelpers
     {
-        private const string PackageReferenceVersionPattern = " Version=\"[^\"]*\"";
-        private const string PackageRefStartPattern = @"<PackageReference\s+Include=""(?<name>[^""]+)""";
-        private const string VersionAttrPattern = @"Version=""(?<version>[^""]+)""";
+        private const string PackageReferenceVersionPattern = " Version\\s*=\\s*\"[^\"]*\"";
+        private const string PackageRefStartPattern = @"<PackageReference\s+Include\s*=\s*""(?<name>[^""]+)""";
+        private const string VersionAttrPattern = @"Version\s*=\s*""(?<version>[^""]+)""";
         private const string VersionTagPattern = "<Version>(?<version>[^<]+)</Version>";
         private const string PackageReferenceCloseTagPattern = "</PackageReference>";
         private const string PackageReferenceClosedPattern = "<PackageReference[^>]*\\/>";
         private const string EmptyPackageReferencePattern = """<PackageReference ([^>]+)\s*>\s*</PackageReference>""";
         private const string EmptyPackageReferenceReplacement = "<PackageReference $1/>";
-        private const string PackageReferenceUpdatePattern = """<PackageReference\s+Update="(?<name>[^"]+)"\s+(.*?)Version="(?<version>[^"]+)"([^/>]*)(\/?)>""";
+        private const string PackageReferenceUpdatePattern = """<PackageReference\s+Update\s*=\s*"(?<name>[^"]+)"\s+(.*?)Version\s*=\s*"(?<version>[^"]+)"([^/>]*)(\/?)>""";
         private const string PackageReferenceUpdateReplacement = """<PackageReference Update="${name}" $1VersionOverride="${version}"$2$3>""";
 
         private static readonly Regex PackageRefStartRegex = new Regex(PackageRefStartPattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
